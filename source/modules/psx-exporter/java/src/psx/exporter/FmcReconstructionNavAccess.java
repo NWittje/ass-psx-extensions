@@ -1,0 +1,30 @@
+package psx.exporter;
+
+import java.lang.invoke.*;
+import java.lang.reflect.Modifier;
+import java.util.*;
+import java.util.function.BooleanSupplier;
+
+/** The worker takes this preimage only after the native radio consumer drains.
+ * restore runs under the same ordinary-thread/lifecycle authority after EXEC.
+ * Current receiver identity/mode/frequency/course readback is mandatory. */
+final class FmcReconstructionNavAccess {
+    private final FmcInitialization.Context context;private final BooleanSupplier qualified;private final FmcPublication.Authority authority;
+    private final MethodHandle snapshot,restore,bankSnapshot,bankRestore,pending;private Object bank,irsBank;private Object[] radioRoots;private long[] radioState,flags,bankFlags,irsFlags;private String bankText,irsText,irsMonitor;private boolean captured,restored;private long capturedLifecycle,releaseToken;private final FmcExclusion.ReleasePrerequisite releasePrerequisite=this::verifyReleasePreimage;
+    private FmcReconstructionNavAccess(FmcInitialization.Context context,BooleanSupplier qualified,FmcPublication.Authority authority)throws Throwable{this.context=context;this.qualified=qualified;this.authority=authority;snapshot=method(context.owner("NavRadios"),FmcReconstructionNavPrepare.SNAP,Object[].class);restore=method(context.owner("NavRadios"),FmcReconstructionNavPrepare.RESTORE,void.class,long[].class);bankSnapshot=method(context.owner("Qs"),FmcReconstructionNavPrepare.BANK_SNAP,Object[].class,Object.class);bankRestore=method(context.owner("Qs"),FmcReconstructionNavPrepare.BANK_RESTORE,void.class,Object.class,String.class,long[].class);pending=method(context.owner("Q"),FmcReconstructionBanks.PENDING,boolean.class,Object.class);context.owner("NavRadios$Vhf");context.owner("NavRadios$Ils");context.owner("NavRadios$Vor");}
+    static FmcReconstructionNavAccess bind(FmcInitialization.Context context,BooleanSupplier qualified,FmcPublication.Authority authority)throws Throwable{Objects.requireNonNull(context);Objects.requireNonNull(qualified);Objects.requireNonNull(authority);require(context.current()&&qualified.getAsBoolean(),"worker lifecycle");return new FmcReconstructionNavAccess(context,qualified,authority);}
+    private static MethodHandle method(Class<?> owner,String name,Class<?> result,Class<?>... args)throws ReflectiveOperationException{var m=owner.getDeclaredMethod(name,args);require(m.isSynthetic()&&Modifier.isPublic(m.getModifiers())&&Modifier.isStatic(m.getModifiers())&&m.getReturnType()==result,"exact bridge");return MethodHandles.privateLookupIn(owner,MethodHandles.lookup()).findStatic(owner,name,MethodType.methodType(result,args));}
+    private static void require(boolean yes,String why){if(!yes)throw new IllegalStateException("FMC current navigation "+why);}
+    private void current(){require(context.current()&&qualified.getAsBoolean(),"lifecycle replaced");}
+    Object[] receivers()throws Throwable{current();Object[] now=(Object[])snapshot.invokeExact();require(now.length==6&&now[2] instanceof Object[]&&((Object[])now[2]).length==5,"native receiver roster");var result=new Object[7];result[0]=now[0];System.arraycopy(now[2],0,result,1,5);result[6]=now[4];return result;}
+    void capture()throws Throwable{current();require(!captured,"one current preimage");Object[] now=(Object[])snapshot.invokeExact();bank=now[0];irsBank=now[4];require(bank!=irsBank&&context.owner("Qs").isInstance(bank)&&context.owner("Qs").isInstance(irsBank)&&!(boolean)pending.invokeExact(bank)&&!(boolean)pending.invokeExact(irsBank),"navigation/IRS input pending or type");flags=((long[])now[1]).clone();radioRoots=((Object[])now[2]).clone();radioState=((long[])now[3]).clone();Object[] raw=(Object[])bankSnapshot.invokeExact(bank);bankText=(String)raw[0];bankFlags=((long[])raw[1]).clone();raw=(Object[])bankSnapshot.invokeExact(irsBank);irsText=(String)raw[0];irsFlags=((long[])raw[1]).clone();irsMonitor=(String)now[5];require(flags.length==3&&radioState.length==15&&bankFlags.length==3&&irsFlags.length==3&&bankText!=null&&irsText!=null&&irsMonitor!=null,"complete current preimage");current();capturedLifecycle=Observer.terrainEpoch();captured=true;}
+    void restore()throws Throwable{current();authority.check();require(captured&&!restored,"current preimage order");restore.invokeExact(flags);authority.check();bankRestore.invokeExact(bank,bankText,bankFlags);authority.check();bankRestore.invokeExact(irsBank,irsText,irsFlags);verify();restored=true;}
+    void verify()throws Throwable{current();authority.check();verifyReleasePreimage();}
+    private void verifyReleasePreimage()throws Throwable{current();require(captured&&capturedLifecycle==Observer.terrainEpoch(),"captured same-lifecycle release preimage");Object[] now=(Object[])snapshot.invokeExact();require(now[0]==bank&&now[4]==irsBank&&irsMonitor.equals(now[5])&&Arrays.equals((long[])now[1],flags)&&Arrays.equals((long[])now[3],radioState),"current IRS monitor or radio flags/modes/frequencies/courses changed");Object[] actual=(Object[])now[2];for(int i=0;i<5;i++)require(actual[i]==radioRoots[i],"current radio receiver replaced");Object[] raw=(Object[])bankSnapshot.invokeExact(bank);require(bankText.equals(raw[0])&&Arrays.equals((long[])raw[1],bankFlags),"current navigation bank content/freshness/history changed");raw=(Object[])bankSnapshot.invokeExact(irsBank);require(irsText.equals(raw[0])&&Arrays.equals((long[])raw[1],irsFlags),"current IRS bank content/freshness/history changed");current();}
+    /** Called by the closed-quiescent worker immediately after capture, before
+     * LOAD. The prebound readonly checker cannot grant failed mutation authority.
+     * Actual gate release verifies it even when PROPAGATE/finish failed. */
+    void installReleasePrerequisite(long token)throws Throwable{require(captured&&releaseToken==0,"single captured release obligation");verifyReleasePreimage();FmcExclusion.installReleasePrerequisite(token,releasePrerequisite);releaseToken=token;}
+    Object ownedBank(){require(captured,"captured bank");return bank;}
+}
+

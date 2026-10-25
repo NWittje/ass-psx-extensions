@@ -1,0 +1,33 @@
+package psx.exporter;
+import java.lang.classfile.*;import java.lang.classfile.instruction.*;import java.lang.constant.*;import java.util.*;import static java.lang.constant.ConstantDescs.*;
+
+/** Native auto transition altitude/level publications in feet. Pilot status
+ * 'p' keeps its current value; automatic values follow the NEW native airport.
+ * Physical weather/barometer methods retain their complete continuation. */
+final class FmcReconstructionTransitionEffects {
+    static final String STATUS="$psxExporter$fmcCurrentTransitionStatus",BANK="$psxExporter$fmcTransitionBank";
+    static final Set<FmcQualification.Member> OUTPUTS=Set.of(new FmcQualification.Member("FmcVnav","transAlt","I"),new FmcQualification.Member("FmcVnav","transLvl","I"));
+    static Set<FmcQualification.Member> inputs(){return Set.of(new FmcQualification.Member("FmcVnav","transAltStatus","C"),new FmcQualification.Member("FmcVnav","transLvlStatus","C"),new FmcQualification.Member("Glob","qsFmcVnavX","I"));}
+    static Set<FmcReconstructionExecRoots.Bank> banks(){return Set.of(new FmcReconstructionExecRoots.Bank(new FmcQualification.Member("Glob","qs","[LQs;"),new FmcQualification.Member("Glob","qsFmcVnavX","I")));}
+    static Set<FmcQualification.Member> inspect(Prepare data,Set<FmcQualification.Member> construction,Set<FmcQualification.Member> currentInputs){
+        qualify(data,construction);var result=new HashSet<>(OUTPUTS);result.removeAll(currentInputs);return Set.copyOf(result);
+    }
+    /** Keep the current ND-formatting input witnesses while allowing original
+     * EXEC's atomic transition publications to ordinary instrument readers. */
+    static Set<FmcQualification.Member> atomicCurrentOutputs(Prepare data,Set<FmcQualification.Member> construction,Set<FmcQualification.Member> currentInputs){qualify(data,construction);var result=new HashSet<>(OUTPUTS);result.retainAll(currentInputs);return Set.copyOf(result);}
+    private static void qualify(Prepare data,Set<FmcQualification.Member> construction){
+        var conflicts=new HashSet<>(OUTPUTS);conflicts.retainAll(construction);require(conflicts.isEmpty(),"construction transition value collision stores="+conflicts);var all=FmcReconstructionPageEffects.writers(data,OUTPUTS);var copy=new Prepare.MethodId("FmcVnav","copyTransitions","(I)V");var parser=new Prepare.MethodId("FmcVnav","readGlobVnavX","()V");var potential=FmcReconstructionExecAudit.inspect(data);
+        for(var field:OUTPUTS){var pilot=new Prepare.MethodId(field.name().equals("transAlt")?"CduPgVnavClb$ThreadR3":"CduPgDesForecasts$ThreadL1","run","()V");require(all.getOrDefault(field,Set.of()).equals(Set.of(copy,parser,pilot))&&potential.writers().getOrDefault(field,Set.of()).equals(Set.of(copy)),"exact native transition writers "+field);}
+        var method=data.methods.get(copy);var code=(java.lang.classfile.attribute.CodeAttribute)method.code().orElseThrow();var pos=positions(method);
+        for(String role:List.of("Alt","Lvl")){int status=role.equals("Alt")?256:463,branch=role.equals("Alt")?261:468,write=role.equals("Alt")?272:479,end=role.equals("Alt")?292:499;
+            require(Prepare.field(pos.get(status),Opcode.GETSTATIC,"FmcVnav","trans"+role+"Status")&&pos.get(status+3) instanceof ConstantInstruction pilot&&pilot.constantValue().equals((int)'p')&&pos.get(branch) instanceof BranchInstruction keep&&keep.opcode()==Opcode.IF_ICMPEQ&&code.labelToBci(keep.target())==end&&Prepare.field(pos.get(write),Opcode.PUTSTATIC,"FmcVnav","trans"+role),"exact current pilot-status preservation branch "+role);
+        }
+        require(Prepare.field(pos.get(229),Opcode.GETFIELD,"FmcRte$Rte","origTransAlt")&&Prepare.field(pos.get(436),Opcode.GETFIELD,"FmcRte$Rte","destTransLvl"),"NEW airport transition sources");
+        var read=positions(data.methods.get(parser));require(Prepare.field(read.get(3),Opcode.GETSTATIC,"Glob","qsFmcVnavX")&&Prepare.field(read.get(49),Opcode.PUTSTATIC,"FmcVnav","transAltStatus")&&Prepare.field(read.get(57),Opcode.PUTSTATIC,"FmcVnav","transLvlStatus"),"current pilot statuses/native bank input");
+        var nd=positions(data.requireMethod("Routes$RteBody","makeNdDataStrings","(I)V"));require(Prepare.field(nd.get(94),Opcode.GETFIELD,"FmcVnavCalc$ProfilePoint","legIdx")&&Prepare.field(nd.get(100),Opcode.GETSTATIC,"FmcVnav","phase")&&Prepare.field(nd.get(106),Opcode.GETSTATIC,"FmcVnav","transAlt")&&Prepare.field(nd.get(114),Opcode.GETSTATIC,"FmcVnav","transLvl"),"exact current ND formatting dependencies");
+        for(var group:List.of(FmcNarrowContent.HEADER_INPUTS,FmcNarrowContent.PERF_INPUTS,FmcNarrowContent.WAYPOINT_INPUTS))for(var input:group)require(!OUTPUTS.contains(new FmcQualification.Member(input.owner(),input.name(),input.descriptor())),"transition publication cannot be artifact input");
+    }
+    static Map<String,byte[]> transform(Prepare data,Map<String,byte[]> lower,Set<FmcQualification.Member> construction,Set<FmcQualification.Member> currentInputs){inspect(data,construction,currentInputs);byte[] input=lower.getOrDefault("FmcVnav",data.inputs.get("FmcVnav"));var model=data.cf.parse(input);require(model.methods().stream().noneMatch(m->Set.of(STATUS,BANK).contains(m.methodName().stringValue())),"getter collision");var owner=ClassDesc.of("FmcVnav");var glob=ClassDesc.of("Glob");int flags=ClassFile.ACC_PUBLIC|ClassFile.ACC_STATIC|ClassFile.ACC_SYNTHETIC;var changed=new HashMap<>(lower);byte[] output=data.cf.transformClass(model,new ClassTransform(){public void accept(ClassBuilder b,ClassElement e){b.with(e);}public void atEnd(ClassBuilder b){b.withMethodBody(STATUS,MethodTypeDesc.of(CD_int.arrayType()),flags,c->c.iconst_2().newarray(TypeKind.INT).dup().iconst_0().getstatic(owner,"transAltStatus",CD_char).iastore().dup().iconst_1().getstatic(owner,"transLvlStatus",CD_char).iastore().areturn());b.withMethodBody(BANK,MethodTypeDesc.of(CD_Object),flags,c->c.getstatic(glob,"qs",ClassDesc.of("Qs").arrayType()).getstatic(glob,"qsFmcVnavX",CD_int).aaload().areturn());}});require(data.cf.verify(output).isEmpty(),"readonly transition getter verifier");changed.put("FmcVnav",output);var legalBefore=new HashMap<>(data.inputs);legalBefore.putAll(lower);legalBefore.put("FmcVnav",input);var legalAfter=new HashMap<>(legalBefore);legalAfter.putAll(changed);TerrainAccess.verifyAdded(legalBefore,legalAfter,data.inputs);return Map.copyOf(changed);}
+    static Map<Integer,Instruction> positions(MethodModel method){var r=new HashMap<Integer,Instruction>();int bci=0;for(var op:Prepare.instructions(method)){r.put(bci,op);bci+=op.sizeInBytes();}return Map.copyOf(r);}
+    private static void require(boolean yes,String why){if(!yes)throw new IllegalArgumentException("FMC transition outputs "+why);}
+}

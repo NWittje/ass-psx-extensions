@@ -1,0 +1,289 @@
+/* Selected saved palettes; server-side IP preferences. No framework. */
+body, body[data-theme=neutral] {
+  --ios-background: #E5E7EB;
+  --ios-surface: #FFFFFF;
+  --ios-text: #1F2328;
+  --ios-edge: #6B6B6B;
+  --ios-selected: #1F2328;
+  --ios-selected-text: #FFFFFF;
+  --ios-caution: #1F2328;
+  --ios-alarm: #B42318;
+  --ios-healthy: #1F2328;
+  --ios-header: #1F2328;
+  --ios-header-text: #FFFFFF;
+  --ios-coverage: #E5E7EB;
+}
+body[data-theme=teal-orange] {
+  --ios-background: #141A21;
+  --ios-surface: #303740;
+  --ios-text: #F4F6F8;
+  --ios-edge: #F4F6F8;
+  --ios-selected: #54C7C7;
+  --ios-selected-text: #141A21;
+  --ios-caution: #F4A261;
+  --ios-alarm: #F4F6F8;
+  --ios-healthy: #F4F6F8;
+  --ios-header: #141A21;
+  --ios-header-text: #F4F6F8;
+  --ios-coverage: #141A21;
+}
+body[data-theme=warm-graphite] {
+  --ios-background: #201B18;
+  --ios-surface: #4A423C;
+  --ios-text: #F7F2EB;
+  --ios-edge: #F7F2EB;
+  --ios-selected: #F7F2EB;
+  --ios-selected-text: #201B18;
+  --ios-caution: #FFB15C;
+  --ios-alarm: #FF9690;
+  --ios-healthy: #F7F2EB;
+  --ios-header: #201B18;
+  --ios-header-text: #F7F2EB;
+  --ios-coverage: #201B18;
+}
+body {
+  background: var(--ios-background);
+  color: var(--ios-text);
+  color-scheme: light;
+}
+body header,
+body footer {
+  background: var(--ios-header);
+  color: var(--ios-header-text);
+  box-shadow: none;
+}
+body header { border-bottom: 1px solid var(--ios-edge); }
+body footer { border-top: 1px solid var(--ios-edge); }
+body header p,
+body .brand,
+body .footer-row p,
+body .footer-note { color: var(--ios-header-text); }
+body nav {
+  background: var(--ios-background);
+  border-color: var(--ios-edge);
+}
+body .panel,
+body .status-content,
+body .channel,
+body dialog {
+  background: var(--ios-surface);
+  color: var(--ios-text);
+  border-color: var(--ios-edge);
+  box-shadow: none;
+}
+body .schematic {
+  background: var(--ios-background);
+  border-color: var(--ios-edge);
+}
+body .airport-heading p,
+body #map-note,
+body .availability,
+body .channel p,
+body .operation { color: var(--ios-text); }
+body .target-detail {
+  background: var(--ios-background);
+  color: var(--ios-text);
+  border-left-color: var(--ios-selected);
+}
+body button,
+body button.secondary {
+  background: var(--ios-surface);
+  color: var(--ios-text);
+  border: 1px solid var(--ios-edge);
+  box-shadow: none;
+  opacity: 1;
+}
+body button:hover:enabled {
+  border-width: 2px;
+  padding: 10px 17px;
+}
+body nav button:hover:enabled { padding: 15px 11px; }
+body button.selected,
+body button[aria-pressed="true"] {
+  background: var(--ios-selected);
+  color: var(--ios-selected-text);
+  border-color: var(--ios-selected-text);
+  box-shadow: none;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 2px;
+}
+body input:not([type="checkbox"]):not([type="range"]),
+body select {
+  background: var(--ios-surface);
+  color: var(--ios-text);
+  border: 1px solid var(--ios-edge);
+  opacity: 1;
+}
+body input::placeholder { color: var(--ios-text); opacity: 1; }
+body button:disabled,
+body input:disabled,
+body select:disabled,
+body .study-disabled {
+  background: var(--ios-surface);
+  color: var(--ios-text);
+  border-color: var(--ios-edge);
+  border-style: dashed;
+  opacity: 1;
+  cursor: default;
+}
+body button:focus-visible,
+body input:focus-visible,
+body select:focus-visible,
+body summary:focus-visible {
+  outline: 3px solid var(--ios-text);
+  outline-offset: 4px;
+}
+body header button:focus-visible,
+body footer button:focus-visible,
+body footer summary:focus-visible { outline-color: var(--ios-header-text); }
+body .check input[type="checkbox"] {
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  margin: 0;
+  padding: 0;
+  background: var(--ios-surface);
+  border: 2px solid var(--ios-edge);
+  border-radius: 2px;
+  flex: 0 0 22px;
+}
+body .check input[type="checkbox"]:checked {
+  background: var(--ios-selected);
+  border-color: var(--ios-selected-text);
+}
+body .check input[type="checkbox"]:checked::after {
+  content: "";
+  width: 6px;
+  height: 11px;
+  border: solid var(--ios-selected-text);
+  border-width: 0 2px 2px 0;
+  transform: translateY(-2px) rotate(45deg);
+}
+/* Paired numeric/range controls. */
+body input[type="range"] {
+  appearance: none;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  background: var(--ios-surface);
+  border: 1px solid var(--ios-edge);
+  border-radius: 4px;
+}
+body input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  background: var(--ios-edge);
+}
+body input[type="range"]::-moz-range-track {
+  height: 6px;
+  background: var(--ios-edge);
+}
+body input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  margin-top: -9px;
+  background: var(--ios-selected);
+  border: 3px solid var(--ios-selected-text);
+  border-radius: 3px;
+}
+body input[type="range"]::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  background: var(--ios-selected);
+  border: 3px solid var(--ios-selected-text);
+  border-radius: 3px;
+}
+body #airport-map text { fill: var(--ios-text); }
+body #airport-map line { stroke: var(--ios-edge); }
+body #airport-map path { stroke: var(--ios-text); }
+/* Installed ios.js uses these presentation-attribute identity markers.
+   They identify existing roles; they do not author extra display colors.
+   Prefer explicit data-role metadata when integrating a chosen palette. */
+body #airport-map line[stroke$="ba9a32"] { stroke: var(--ios-selected); }
+body #airport-map path[stroke$="453c19"] { stroke: var(--ios-selected-text); }
+body #airport-map [data-role="runway-selected"] { stroke: var(--ios-selected); }
+body #airport-map [data-role="runway-unselected"] { stroke: var(--ios-edge); }
+body #airport-map [data-role="text"] { fill: var(--ios-text); }
+body #airport-map [data-role="direction"] { stroke: var(--ios-selected-text); }
+body #airport-map [data-role="direction-casing"] { stroke: var(--ios-text); }
+/* State text must say the meaning; color is never the sole cue. */
+body .study-state.healthy,
+body .study-state[data-state="healthy"] { color: var(--ios-healthy); }
+body .study-state.caution,
+body .study-state[data-state="caution"] { color: var(--ios-caution); }
+body .study-state.alarm,
+body .study-state[data-state="alarm"],
+body #message { color: var(--ios-alarm); }
+body .study-state.alarm,
+body .study-state[data-state="alarm"] {
+  border: 3px double var(--ios-alarm);
+  padding: 4px 8px;
+}
+body button[data-kind][aria-pressed="true"] {
+  background: var(--ios-caution);
+  color: var(--ios-background);
+  border-color: var(--ios-background);
+  text-decoration: underline;
+}
+body button.execute {
+  background: var(--ios-surface);
+  color: var(--ios-text);
+  border: 2px solid var(--ios-edge);
+  box-shadow: none;
+}
+body dialog::backdrop { background: var(--ios-background); }
+
+/* Neutral caution uses text + selected state. Reserve red for a true alarm. */
+body button[data-kind][aria-pressed="true"] {
+  background: var(--ios-selected);
+  color: var(--ios-selected-text);
+  border-color: var(--ios-selected-text);
+}
+/* Dark neutral header/footer require their own foreground pairing. */
+body header .study-state.healthy,
+body footer .study-state.healthy,
+body header .study-state.caution,
+body footer .study-state.caution,
+body header .study-state[data-state="healthy"],
+body footer .study-state[data-state="healthy"],
+body header .study-state[data-state="caution"],
+body footer .study-state[data-state="caution"] {
+  color: var(--ios-header-text);
+}
+body header .study-state.alarm,
+body footer .study-state.alarm,
+body header .study-state[data-state="alarm"],
+body footer .study-state[data-state="alarm"] {
+  background: var(--ios-alarm);
+  color: var(--ios-header-text);
+  border-color: var(--ios-header-text);
+}
+
+/* Command availability does not imply error or success. */
+body footer .operation { color: var(--ios-header-text); }
+
+/* Numeric fields need a stronger selector than the generic input boundary. */
+body input:not([type="checkbox"]):not([type="range"]):disabled { border-style: dashed; }
+
+/* Operability overrides selection paint; the ON/checked label still conveys value. */
+body button.execute:disabled,
+body button[data-kind][aria-pressed]:disabled,
+body button.selected:disabled,
+body .check input[type="checkbox"]:checked:disabled,
+body input[type="range"]:disabled {
+  background: var(--ios-surface);
+  color: var(--ios-text);
+  border-color: var(--ios-edge);
+  border-style: dashed;
+  opacity: 1;
+}
+body .check input[type="checkbox"]:checked:disabled::after {border-color: var(--ios-text);}
+body input[type="range"]:disabled::-webkit-slider-thumb {background:var(--ios-text);border-color:var(--ios-background);}
+body input[type="range"]:disabled::-moz-range-thumb {background:var(--ios-text);border-color:var(--ios-background);}
+
+body[data-theme=teal-orange], body[data-theme=warm-graphite] { color-scheme:dark; }
+body .environment-time { border-color:var(--ios-background); } body .surface-fields { border-color:var(--ios-edge); } body .local-clock p, body #environment-result { color:var(--ios-text); } body #environment-page { color:var(--ios-text); } body #atmosphere-svg [role=slider]:focus-visible, body #wind-rose [role=slider]:focus-visible { outline:3px solid var(--ios-text); outline-offset:4px; } body input[aria-invalid=true] { outline-color:var(--ios-alarm); } body button.selected, body button[aria-pressed=true] { box-shadow:inset 0 0 0 2px var(--ios-selected-text); }

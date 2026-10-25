@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.24)
+add_library(psx_diagnostics_core INTERFACE)
+target_include_directories(psx_diagnostics_core INTERFACE "${CMAKE_CURRENT_LIST_DIR}/include")
+target_compile_features(psx_diagnostics_core INTERFACE cxx_std_17)
+add_library(psx_diagnostics STATIC src/journal.cpp)
+target_link_libraries(psx_diagnostics PUBLIC psx_diagnostics_core PRIVATE advapi32 bcrypt)
+target_compile_definitions(psx_diagnostics PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_compile_options(psx_diagnostics PRIVATE /W4 /WX /EHsc /utf-8)

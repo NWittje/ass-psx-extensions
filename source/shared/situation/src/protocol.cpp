@@ -1,0 +1,28 @@
+#include <psx/situation/protocol.hpp>
+#include <psx/non_normal/pipe_io.hpp>
+#include <algorithm>
+#include <bit>
+#include <cmath>
+#include <cstring>
+namespace psx::situation {namespace {
+void put(std::uint8_t* p,std::uint64_t v,unsigned n){for(unsigned i=0;i<n;++i)p[i]=static_cast<std::uint8_t>(v>>(8*i));}
+std::uint64_t get(const std::uint8_t* p,unsigned n){std::uint64_t v{};for(unsigned i=0;i<n;++i)v|=std::uint64_t(p[i])<<(8*i);return v;}
+bool header(std::span<const std::uint8_t> b,unsigned kind,std::size_t fixed,std::uint32_t& seq){if(b.size()<16+fixed||b.size()>frame_bytes||std::memcmp(b.data(),"PXQ1",4)||get(b.data()+4,2)!=1||get(b.data()+6,2)!=kind||get(b.data()+8,4)!=b.size()-16)return false;seq=static_cast<std::uint32_t>(get(b.data()+12,4));return seq!=0;}
+void head(Frame& f,unsigned kind,std::size_t n,std::uint32_t seq){f={};std::memcpy(f.bytes.data(),"PXQ1",4);put(f.bytes.data()+4,1,2);put(f.bytes.data()+6,kind,2);put(f.bytes.data()+8,n,4);put(f.bytes.data()+12,seq,4);f.size=16+n;}
+}
+bool encode(const Request& r,std::uint32_t seq,Frame& f)noexcept{try{if(!seq||static_cast<unsigned>(r.command)>7||r.data.size()>chunk_bytes||r.total>max_artifact||r.offset>r.total||r.data.size()>r.total-r.offset)return false;head(f,1,96+r.data.size(),seq);auto p=f.bytes.data()+16;put(p,static_cast<unsigned>(r.command),4);put(p+4,r.client.pid,4);put(p+8,r.target.pid,4);put(p+16,r.client.creation_filetime,8);put(p+24,r.target.creation_filetime,8);put(p+32,r.session,8);put(p+40,r.operation,8);put(p+48,r.lifecycle,8);put(p+56,r.frequency,8);put(p+64,std::bit_cast<std::uint64_t>(r.issued_qpc),8);put(p+72,std::bit_cast<std::uint64_t>(r.deadline_qpc),8);put(p+80,r.offset,4);put(p+84,r.total,4);put(p+88,r.data.size(),4);std::copy(r.data.begin(),r.data.end(),p+96);return true;}catch(...){return false;}}
+bool decode(std::span<const std::uint8_t> b,Request& r,std::uint32_t& seq)noexcept{try{if(!header(b,1,96,seq))return false;auto p=b.data()+16;auto n=get(p+88,4);if(n>chunk_bytes||n!=b.size()-112||get(p+12,4)||get(p+92,4)||get(p,4)>7)return false;r={};r.command=static_cast<Command>(get(p,4));r.client={static_cast<std::uint32_t>(get(p+4,4)),get(p+16,8)};r.target={static_cast<std::uint32_t>(get(p+8,4)),get(p+24,8)};r.session=get(p+32,8);r.operation=get(p+40,8);r.lifecycle=get(p+48,8);r.frequency=get(p+56,8);r.issued_qpc=std::bit_cast<std::int64_t>(get(p+64,8));r.deadline_qpc=std::bit_cast<std::int64_t>(get(p+72,8));r.offset=static_cast<std::uint32_t>(get(p+80,4));r.total=static_cast<std::uint32_t>(get(p+84,4));if(!r.client.pid||!r.target.pid||!r.session||!r.operation||!r.frequency||r.total>max_artifact||r.offset>r.total||n>r.total-r.offset)return false;r.data.assign(p+96,p+96+n);return true;}catch(...){return false;}}
+bool encode(const Result& r,std::uint32_t seq,Frame& f)noexcept{try{if(!seq||r.data.size()>chunk_bytes||r.total>max_artifact||r.offset>r.total||r.data.size()>r.total-r.offset)return false;head(f,2,240+r.data.size(),seq);auto p=f.bytes.data()+16;put(p,static_cast<unsigned>(r.phase),4);put(p+4,static_cast<unsigned>(r.reason),4);put(p+8,r.capabilities,4);put(p+12,r.evidence,4);put(p+16,r.server.pid,4);put(p+24,r.server.creation_filetime,8);put(p+32,r.session,8);put(p+40,r.operation,8);put(p+48,r.lifecycle,8);put(p+56,std::bit_cast<std::uint64_t>(r.observation_qpc),8);put(p+64,r.offset,4);put(p+68,r.total,4);put(p+72,r.data.size(),4);std::copy(r.artifact_hash.begin(),r.artifact_hash.end(),p+80);std::copy(r.source_jar_hash.begin(),r.source_jar_hash.end(),p+112);for(unsigned i=0;i<12;++i){if(!std::isfinite(r.readback[i]))return false;put(p+144+8*i,std::bit_cast<std::uint64_t>(r.readback[i]),8);}std::copy(r.data.begin(),r.data.end(),p+240);return true;}catch(...){return false;}}
+bool decode(std::span<const std::uint8_t> b,Result& r,std::uint32_t& seq)noexcept{try{if(!header(b,2,240,seq))return false;auto p=b.data()+16;auto n=get(p+72,4);if(n>chunk_bytes||n!=b.size()-256||get(p+20,4)||get(p+76,4)||get(p,4)>6||get(p+4,4)>11||(get(p+8,4)&~31ULL)||(get(p+12,4)&~15ULL))return false;r={};r.phase=static_cast<Phase>(get(p,4));r.reason=static_cast<Reason>(get(p+4,4));r.capabilities=static_cast<std::uint32_t>(get(p+8,4));r.evidence=static_cast<std::uint32_t>(get(p+12,4));r.server={static_cast<std::uint32_t>(get(p+16,4)),get(p+24,8)};r.session=get(p+32,8);r.operation=get(p+40,8);r.lifecycle=get(p+48,8);r.observation_qpc=std::bit_cast<std::int64_t>(get(p+56,8));r.offset=static_cast<std::uint32_t>(get(p+64,4));r.total=static_cast<std::uint32_t>(get(p+68,4));if(!r.server.pid||!r.session||!r.operation||r.total>max_artifact||r.offset>r.total||n>r.total-r.offset)return false;std::copy_n(p+80,32,r.artifact_hash.data());std::copy_n(p+112,32,r.source_jar_hash.data());for(unsigned i=0;i<12;++i){r.readback[i]=std::bit_cast<double>(get(p+144+8*i,8));if(!std::isfinite(r.readback[i]))return false;}r.data.assign(p+240,p+240+n);return true;}catch(...){return false;}}
+std::wstring endpoint(ProcessIdentity p){return L"\\\\.\\pipe\\psx-ios.situation.exporter.v1."+psx::non_normal::current_sid()+L"."+std::to_wstring(p.pid)+L"."+std::to_wstring(p.creation_filetime);}
+bool read_frame(HANDLE h,Frame& f,std::uint32_t timeout)noexcept {
+    f={};
+    return psx::non_normal::pipe_io::read_frame(h,f.bytes.data(),f.bytes.size(),f.size,timeout,[](auto n) {
+        return n>=96 && n<=frame_bytes-16;
+    });
+}
+bool write_frame(HANDLE h,const Frame& f,std::uint32_t timeout)noexcept {
+    if(f.size<16||f.size>frame_bytes){SetLastError(ERROR_INVALID_DATA);return false;}
+    return psx::non_normal::pipe_io::transfer(h,true,const_cast<std::uint8_t*>(f.bytes.data()),static_cast<DWORD>(f.size),GetTickCount64()+timeout);
+}
+}

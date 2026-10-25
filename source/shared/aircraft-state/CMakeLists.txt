@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.24)
+project(psx_aircraft_state LANGUAGES CXX)
+if(NOT TARGET psx_aircraft_state)
+  add_library(psx_aircraft_state INTERFACE)
+  target_include_directories(psx_aircraft_state INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+  target_compile_features(psx_aircraft_state INTERFACE cxx_std_17)
+endif()

@@ -1,0 +1,123 @@
+#non-normal-page{width:100%;height:100%;min-height:0;display:grid;grid-template-rows:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.failure-upper{display:grid;grid-template-columns:minmax(516px,548px) minmax(110px,180px) minmax(160px,240px);grid-template-rows:minmax(0,1fr);align-items:center;justify-content:center;gap:10px;min-height:0;flex:1}
+.failures-panel{display:flex;flex-direction:column;min-height:0}
+.failures-heading{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.failures-heading h2{margin:0;font-size:18px}.failures-heading .button-row{gap:6px}
+.failure-tools{display:flex;gap:6px;align-items:center}.failure-utilities{margin-left:auto}
+#failure-catalogue-list .armed{background:#f6d78a;color:#3c2c08}#failure-catalogue-list .active-failure{background:#b42318;color:white}
+#non-normal-page button{min-height:36px;font-size:12px;padding:7px 9px}
+#failure-groups{position:relative;display:grid;gap:10px;--system-label:54px;--systems-width:280px;--row-gap:6px}
+#failure-groups::after{content:"";position:absolute;top:0;bottom:0;left:calc(var(--system-label) + var(--systems-width) + 1.5 * var(--row-gap));border-left:1px dashed var(--ios-edge);pointer-events:none}
+.failure-group{display:grid;grid-template-columns:var(--system-label) var(--systems-width) minmax(0,1fr);align-items:center;gap:var(--row-gap);width:100%;max-width:100%}
+.failure-group strong{font-size:11px}.failure-system-buttons,.failure-mode-buttons{display:flex;gap:4px}.failure-system-buttons{justify-content:flex-end}.failure-mode-buttons{padding-left:10px}
+.failure-system-buttons button{flex:0 0 auto;min-width:38px;padding:6px!important;white-space:nowrap}
+.failure-system-buttons [data-system^=engine]{width:40px}
+.failure-system-buttons [data-system^=gear]{width:50px}
+.failure-system-buttons [data-system^=display]{width:42px;font-size:10px!important;padding:3px!important}
+.failure-system-buttons [data-system^=control]{width:72px}
+.failure-system-buttons [data-system^=cdu]{width:40px}
+.failure-system-buttons [data-system=stabilizer0]{width:82px}
+.failure-mode-buttons button{min-width:40px;padding:6px!important;font-size:11px!important;white-space:nowrap}
+.failure-controls{min-width:0}.failure-actions{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px;margin-top:10px}.failure-actions button{min-width:72px}#failure-draft-count{font-size:11px}
+#failure-selection-note,#failure-hwio-availability{margin:6px 0 0;font-size:11px;line-height:1.3;max-height:28px;overflow:auto}.failure-notes{height:16px;min-height:16px;display:flex;justify-content:center;gap:12px;overflow:auto}.failure-notes p{margin:0!important}#failure-selection-note{text-align:center}#failure-selection-note:empty,#failure-hwio-availability:empty{display:none}
+.failure-aircraft{margin:0;display:flex;flex-direction:column;align-items:center;min-height:0}
+.failure-aircraft svg{height:100%;max-height:310px;width:100%;min-height:0;fill:#dde3e6;stroke:#647079;stroke-width:2}
+.failure-aircraft figcaption{font-size:10px;text-align:center;color:var(--ios-muted);margin-top:4px}
+#non-normal-page .armed{background:#f6d78a;color:#3c2c08;border-color:#997827;box-shadow:inset 0 2px 4px #55451050}
+#non-normal-page .active-failure{background:#b42318;color:#fff;border-color:#78180f}
+#non-normal-page .staged-now{background:repeating-linear-gradient(135deg,#b42318 0 8px,#f8d3cf 8px 16px) top left/100% 50% no-repeat,repeating-linear-gradient(45deg,#b42318 0 8px,#f8d3cf 8px 16px) bottom left/100% 50% no-repeat;color:#241414;border-color:#b42318;text-shadow:0 0 3px white,0 0 3px white}
+#non-normal-page .event-draft,#non-normal-page .traffic-diagram button.event-draft{background:repeating-linear-gradient(135deg,#f7d174 0 9px,#fff1c9 9px 18px) top left/100% 50% no-repeat,repeating-linear-gradient(45deg,#f7d174 0 9px,#fff1c9 9px 18px) bottom left/100% 50% no-repeat;color:#3b2b0b;border-color:#997827}
+#non-normal-page .event-applied,#non-normal-page .traffic-diagram button.event-applied{background:#f6d78a;color:#3c2c08;border-color:#997827}
+#non-normal-page .armed::after{content:" •";font-weight:700}#non-normal-page .active-failure::after{content:" !";font-weight:700}
+.event-panels{display:grid;grid-template-columns:1fr 1fr;gap:10px;min-height:0}
+.event-panels>.panel{min-height:0;display:flex;flex-direction:column;gap:3px;overflow:auto}
+.event-panels>.weather-events{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:20px auto auto;align-content:center;gap:3px}
+.weather-events>h2{text-align:center;line-height:20px;margin:0}
+.weather-event-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;min-width:0;min-height:0}
+.weather-event-column{display:grid;grid-template-rows:16px 36px 44px 36px;gap:3px;min-width:0;align-items:center}
+.weather-event-column h3{margin:0;text-align:center;font-size:12px;line-height:16px}
+.windshear-events{border-left:1px solid var(--ios-edge);padding-left:10px}
+.vash-row{display:flex;justify-content:center;align-items:center;gap:5px}
+.weather-events .vash-description{text-align:center;white-space:pre-line;overflow-wrap:anywhere}
+.weather-event-clear{display:flex;justify-content:center;align-items:end;height:100%}
+.weather-event-clear button{min-width:64px}
+.weather-events .shear-buttons{flex-wrap:nowrap;justify-content:center;gap:4px}
+#non-normal-page .weather-events .shear-buttons button{flex:1;min-width:0;padding:6px 4px;font-size:11px}
+.shear-height-editor{display:grid;grid-template-rows:30px 12px;gap:2px;min-width:0}
+.weather-events .shear-height-editor label{text-align:center;font-size:10px;line-height:12px}
+.weather-events>#weather-events-state{font-size:10px;line-height:14px;overflow:auto;overflow-wrap:anywhere}
+.weather-events>#weather-events-state:empty{display:none}
+.event-actions p{max-height:30px;overflow:auto}.event-panels .event-actions{margin-top:0}
+.event-panels h2{font-size:16px;margin:0 0 2px}.event-panels .button-row{gap:5px}.event-panels label{font-size:11px;margin:0}
+.shear-height{display:flex;align-items:center;gap:5px;min-width:0}.shear-height input[type=number]{box-sizing:border-box;flex:0 0 calc(4ch + 14px);width:calc(4ch + 14px);min-width:0;min-height:30px;height:30px;font-size:12px;padding:4px;appearance:textfield;font-variant-numeric:tabular-nums}
+.shear-height input[type=number]::-webkit-inner-spin-button,.shear-height input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.shear-height input[type=range]{width:0;min-width:24px;min-height:30px;height:30px;padding:0;flex:1}
+.event-panels p{font-size:10px;line-height:1.3;margin:0}.event-status{min-height:13px;overflow-wrap:anywhere}
+.event-actions{display:flex;gap:5px;align-items:center;margin-top:auto}
+.event-panels>.traffic-events{display:grid;grid-template-columns:auto 1fr;grid-template-rows:20px minmax(80px,1fr) 36px 20px 13px;gap:3px;position:relative}
+.traffic-events>.ignore-ra{grid-column:1/-1;grid-row:4;justify-self:start}
+.traffic-events>.traffic-diagram,.traffic-events>.event-actions,.traffic-events>.event-note{grid-column:1/-1}
+.traffic-events>.traffic-diagram{grid-row:2}.traffic-events>.event-actions{grid-row:3}.traffic-events>.event-note{grid-row:5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.traffic-diagram{min-height:80px;min-width:0;display:flex;justify-content:center;align-items:center;overflow:hidden}
+.traffic-diagram>svg{display:block;width:100%;height:100%;max-height:260px;overflow:visible}
+.traffic-diagram .own-track{stroke:#202020}.traffic-diagram .intruder-track{stroke:#b42318}.traffic-diagram .own-aircraft{color:#000}.traffic-diagram use{fill:currentColor}
+.traffic-runway{fill:#c6c9c9;stroke:#424747;stroke-width:1}.traffic-runway .runway-markings{fill:none;stroke:#fff;stroke-dasharray:5 3}
+#non-normal-page .traffic-diagram button{display:block;width:100%;height:100%;min-height:0;padding:4px;line-height:1;color:#b42318;background:transparent;border:1px solid transparent;box-shadow:none}
+.traffic-diagram button svg{display:block;width:100%;height:100%;color:#b42318;pointer-events:none}
+#non-normal-page .traffic-diagram button:hover,#non-normal-page .traffic-diagram button:focus-visible{border-color:var(--ios-edge)}
+#non-normal-page .traffic-diagram button:not(.event-draft):not(.event-applied):hover,#non-normal-page .traffic-diagram button:not(.event-draft):not(.event-applied):focus-visible{background:var(--ios-panel)}
+#non-normal-page .traffic-diagram button.selected{border-color:#997827}
+#non-normal-page .traffic-diagram button:disabled{opacity:.5}
+.event-panels .check{min-height:20px;font-size:11px;gap:6px;margin:0}.event-panels .check input{height:18px;width:18px}
+/* Catalogue shares the existing failure actions; only its list scrolls. */
+.failure-catalogue{height:100%;min-height:0;min-width:0;display:flex;flex-direction:column;gap:4px}
+#non-normal-page #failure-catalogue-search{min-height:30px;height:30px;padding:5px 7px;font-size:12px}
+#failure-catalogue-list{display:flex;flex-direction:column;gap:3px;min-height:0;overflow:auto;flex:1}
+#non-normal-page #failure-catalogue-list button{text-align:left;min-height:30px;padding:5px 6px;font-size:11px;overflow-wrap:anywhere}
+.catalogue-options{margin:0;font-size:10px;max-height:140px;overflow:auto;flex-shrink:0}
+.catalogue-options summary{min-height:18px;margin-left:12px}
+.catalogue-options label{font-size:10px;margin:3px 0}
+.catalogue-options select,.catalogue-options input{width:100%;min-height:26px!important;height:26px;padding:3px!important;font-size:11px}
+#failure-arm-dialog input{min-height:40px;padding:6px;font:inherit}
+#failure-arm-dialog{width:max-content;max-width:calc(100vw - 32px)}
+.failure-arm-fields{display:flex;justify-content:center;gap:16px}
+.failure-arm-fields>div{width:8ch}
+.failure-arm-fields label{text-align:center;font-size:12px;margin:5px 0 0}
+.failure-arm-fields input{text-align:center;width:100%}
+#runway-actor-options{display:flex;flex-direction:column;gap:8px}
+#crash-reset{font-size:11px;padding:8px 10px}
+.footer-row{grid-template-columns:minmax(150px,.8fr) auto minmax(160px,1fr);gap:10px}.pause-controls{gap:6px}
+@media(min-width:1024px) and (min-height:800px){#non-normal-page{gap:8px}#non-normal-page .panel{padding:10px}.failures-heading{margin-bottom:4px}.failure-actions{margin-top:6px}.failures-heading .button-row button{font-size:11px}.event-panels{gap:8px}.failure-aircraft svg{max-height:280px}}
+/* Six system rows remain inside the half-height pane on an 800px landscape screen. */
+@media(min-width:1024px) and (min-height:800px) and (max-height:900px){
+ #failure-groups{gap:2px}
+ #non-normal-page .failure-group button{height:28px;min-height:28px;padding:2px 6px!important;line-height:1.1}
+ #non-normal-page .failure-utilities button{min-height:28px;padding:4px 7px}
+ #non-normal-page .failure-actions button{min-height:32px;padding:5px 9px}
+ .failure-actions{margin-top:4px}
+}
+@media(max-width:1023px),(max-height:799px){#non-normal-page{height:auto;grid-template-rows:auto auto}.failure-upper{min-height:340px}.event-panels>.panel{min-height:230px}}
+@media(max-width:760px){.event-panels{grid-template-columns:1fr}.failure-upper{grid-template-columns:1fr}.failure-aircraft{display:none}.failure-group{grid-template-columns:1fr}.failures-heading{flex-wrap:wrap}.catalogue-edit{grid-template-columns:auto 1fr}.footer-row{grid-template-columns:1fr}.pause-controls{flex-wrap:wrap}.pause-controls button{flex:1}}
+
+/* The supplied top/front drawing shares one paint state across each physical component. */
+.failure-aircraft{overflow:hidden;width:100%;height:100%;max-height:310px}
+.failure-aircraft #aircraft-damage{width:100%;height:calc(100% - 32px);max-height:none;min-height:0;flex:1;fill:none;stroke:none}
+#aircraft-damage #damage-Outline_layer .damage-st0,
+#aircraft-damage #damage-Outline_layer .damage-st1,
+#aircraft-damage #damage-Outline_layer .damage-st2{stroke:var(--ios-text);stroke-width:1;stroke-linecap:square;stroke-miterlimit:10}
+#aircraft-damage #damage-Outline_layer .damage-st0,
+#aircraft-damage #damage-Outline_layer .damage-st2{fill:none}
+#aircraft-damage #damage-Outline_layer .damage-st1,
+#aircraft-damage #damage-Outline_layer .damage-st3{fill:var(--ios-text)}
+#aircraft-damage [data-damage-region]{fill:none;stroke:var(--ios-text);stroke-width:1}
+#aircraft-damage [data-damage-state=unavailable]{stroke:var(--ios-edge);stroke-opacity:.55}
+#aircraft-damage [data-damage-state=armed]{fill:#f6d78a;stroke:#997827;stroke-dasharray:5 3}
+#aircraft-damage [data-damage-state=staged]{fill:url(#damage-now-pattern);stroke:#b42318}
+#aircraft-damage [data-damage-state=active]{fill:#b42318;stroke:#78180f}
+.damage-legend{display:flex;justify-content:center;flex-wrap:wrap;gap:3px 8px}
+.damage-legend span::before{content:"";display:inline-block;width:9px;height:9px;margin-right:3px;border:1px solid #997827;background:#f6d78a}
+.damage-legend .damage-legend-active::before{background:#b42318;border-color:#78180f}
+.damage-legend .damage-legend-staged::before{background:repeating-linear-gradient(45deg,#b42318 0 2px,#f8d3cf 2px 4px);border-color:#b42318}
+.damage-status-summary{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+@media(max-width:1023px){.failure-upper{grid-template-columns:minmax(0,1fr) 130px minmax(150px,200px);gap:10px}#failure-groups{--system-label:60px;--systems-width:280px;gap:10px}.failure-group{grid-template-columns:var(--system-label) minmax(0,1fr)}.failure-mode-buttons{grid-column:2;padding-left:0}.failure-system-buttons{flex-wrap:wrap}#failure-groups::after{display:none}}
+@media(max-width:760px){.failure-upper{grid-template-columns:1fr}.failure-catalogue{min-height:180px;max-height:240px}.failure-utilities{margin-left:0}.failure-group{grid-template-columns:1fr}.failure-mode-buttons{grid-column:1}.failure-system-buttons{justify-content:flex-start}}

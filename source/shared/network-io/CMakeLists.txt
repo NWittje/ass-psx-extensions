@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.24)
+project(psx_network_io LANGUAGES CXX)
+add_library(psx_network_io STATIC src/network.cpp src/display.cpp)
+target_include_directories(psx_network_io PUBLIC include)
+target_compile_features(psx_network_io PUBLIC cxx_std_20)
+target_compile_definitions(psx_network_io PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX _WIN32_WINNT=0x0A00)
+target_link_libraries(psx_network_io PUBLIC ws2_32 iphlpapi ole32)
