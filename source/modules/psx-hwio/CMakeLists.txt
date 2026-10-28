@@ -48,9 +48,9 @@ if(NOT TARGET psx_diagnostics)
 
 endif()
 
-set(ASS_GRAPHICS_SDK_ROOT "P:/development/ass_graphics_lib/sdk/1.4.3" CACHE PATH "Qualified ASS Graphics 1.4.3 or newer matched Debug/Release SDK inputs")
+set(ASS_GRAPHICS_SDK_ROOT "P:/development/ass_graphics_lib/sdk/1.4.4" CACHE PATH "Qualified ASS Graphics 1.4.4 or newer matched Debug/Release SDK inputs")
 
-find_package(AssGraphics 1.4.3 CONFIG REQUIRED PATHS "${ASS_GRAPHICS_SDK_ROOT}/Release/lib/cmake/AssGraphics" NO_DEFAULT_PATH)
+find_package(AssGraphics 1.4.4 CONFIG REQUIRED PATHS "${ASS_GRAPHICS_SDK_ROOT}/Release/lib/cmake/AssGraphics" NO_DEFAULT_PATH)
 
 set_property(TARGET ass::graphics APPEND PROPERTY IMPORTED_CONFIGURATIONS DEBUG)
 

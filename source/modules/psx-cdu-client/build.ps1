@@ -3,7 +3,7 @@ param([ValidateSet('All','Debug','Release')][string]$Configuration='All',[switch
 $ErrorActionPreference='Stop'
 $sourceRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $repo=if((Split-Path $sourceRoot -Leaf)-eq'source'){[IO.Path]::GetFullPath((Join-Path $sourceRoot '..'))}else{$sourceRoot}
-if(!$GraphicsPackageRoot){throw 'Supply the qualified two-configuration ASS1.4.2 SDK root'}
+if(!$GraphicsPackageRoot){throw 'Supply the qualified two-configuration ASS1.4.4 SDK root'}
 if(!$OutputRoot){$OutputRoot=Join-Path $repo 'bin'}
 $OutputRoot=[IO.Path]::GetFullPath($OutputRoot)
 $workRoot='O:\psx\bin\.work'
@@ -17,7 +17,7 @@ if(!$BuildOnly -and !$StageOnly){throw 'Canonical publication uses scripts/publi
 if(!$BuildOnly -and !$OutputRoot.StartsWith($workRoot+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Working package output must remain in the owned O work'}
 $norm=Join-Path $sourceRoot 'shared/norm/vendor/norm'
 . "$sourceRoot/modules/psx-du-host/tools/runtime-payload.ps1"
-. "$PSScriptRoot/tools/graphics142-inputs.ps1"
+. "$PSScriptRoot/tools/graphics144-inputs.ps1"
 . "$sourceRoot/modules/psx-du-host/tools/inputs.ps1"
 . "$repo/scripts/work-cleanup.ps1" -CleanupProjectRoot "O:\psx"
 function Enter-WorkCleanupMutex {
@@ -142,7 +142,7 @@ foreach($variant in $(if($Configuration -eq 'All'){@('Debug','Release')}else{@($
  $cleanupLease=$null;$published=$false
  try{
  $graphics=[IO.Path]::GetFullPath((Join-Path $GraphicsPackageRoot $variant))
- $sdk=Get-CduGraphics142Sdk -Sdk $graphics -Configuration $variant
+ $sdk=Get-CduGraphics144Sdk -Sdk $graphics -Configuration $variant
  if(!$PublishOnly -and (Test-Path -LiteralPath $build)){throw "A fresh graph is required: $build; close the previous graph without bypassing any cleanup rejection"}
  if($PublishOnly -and !(Test-Path -LiteralPath $build -PathType Container)){throw 'PublishOnly requires the owned qualified graph'}
  $cleanupLease=Enter-WorkCleanup -WorkDirectory $build -Owner 'cdu-6.1'
@@ -251,7 +251,7 @@ foreach($variant in $(if($Configuration -eq 'All'){@('Debug','Release')}else{@($
   [ordered]@{path=$relative;bytes=$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName).Hash;purpose=$purposes[$relative]}
  })
  Confirm-DisplayPackageLayout CduClient @($files.path)
- [ordered]@{product='psx-cdu-client';version=$clientVersion;configuration=$variant;graphics='1.4.2';abi=1;cduWire=1;blackoutWire=1;shaderRevision=1;effectsDefault='off';normRuntime='1.5.7';normSourceTag='v1.5.9';utc=[DateTime]::UtcNow.ToString('o');layout='runtime-v1';qualification=[ordered]@{clean=$stamp.clean;testLogSha256=$stamp.testLogSha256};mutableExcluded=@('settings.cfg','settings.cfg.bak','profiles/*.cfg','profiles/*.cfg.bak');files=$files;sourceHashes=$inputs} | ConvertTo-Json -Depth 7 | Set-Content "$package/manifest.json" -Encoding utf8
+ [ordered]@{product='psx-cdu-client';version=$clientVersion;configuration=$variant;graphics='1.4.4';abi=1;cduWire=1;blackoutWire=1;shaderRevision=1;effectsDefault='off';normRuntime='1.5.7';normSourceTag='v1.5.9';utc=[DateTime]::UtcNow.ToString('o');layout='runtime-v1';qualification=[ordered]@{clean=$stamp.clean;testLogSha256=$stamp.testLogSha256};mutableExcluded=@('settings.cfg','settings.cfg.bak','profiles/*.cfg','profiles/*.cfg.bak');files=$files;sourceHashes=$inputs} | ConvertTo-Json -Depth 7 | Set-Content "$package/manifest.json" -Encoding utf8
  $manifestSha256=(Get-FileHash -LiteralPath "$package/manifest.json").Hash
  . "$repo/scripts/package-layout.ps1"
  AssertRuntimePackageLayout -Directory $package -Product 'psx-cdu-client'

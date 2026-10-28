@@ -34,12 +34,12 @@ try{
   $outcome.phase="test $cfg"
   & $ctest --test-dir $BuildDirectory -C $cfg --output-on-failure -V 2>&1 | Tee-Object -FilePath (Join-Path $BuildDirectory "test-$cfg.log")
   if($LASTEXITCODE -ne 0){throw "IOS $cfg tests failed"}
-  if(-not $SkipPublish){
+  if(-not $SkipPublish -and $cfg -eq 'Release'){
    $outcome.phase="publish $cfg"
    & (Join-Path $PSScriptRoot 'publish.ps1') -Configuration $cfg -BuildDirectory $BuildDirectory -AssGraphicsSdkRoot $graphicsSdk.Root -GraphicsSourceRoot $GraphicsSourceRoot
   }
  }
- $outcome.completed=$true;$outcome.published=-not $SkipPublish;$outcome.phase='owner collection review'
+ $outcome.completed=$true;$outcome.published=(-not $SkipPublish -and $Configuration -in @('All','Release'));$outcome.phase='owner collection review'
 }catch{
  $primaryFailure=$_;$outcome.failure=$_.ToString();throw
 }finally{

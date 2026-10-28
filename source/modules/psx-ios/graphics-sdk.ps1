@@ -11,7 +11,7 @@ function Resolve-IosGraphicsSdk([string]$Root) {
         $match=[regex]::Match($text,'set\(PACKAGE_VERSION "([0-9]+\.[0-9]+\.[0-9]+)"\)')
         if(-not$match.Success){throw 'ASS Graphics SDK version metadata unavailable.'}
         $observed=[version]$match.Groups[1].Value
-        if($observed.Major-ne1-or$observed-lt[version]'1.4.2'){throw 'ASS Graphics 1.4.2 or newer compatible 1.x SDK is required.'}
+        if($observed-ne[version]'1.4.4'){throw 'Exact ASS Graphics 1.4.4 SDK is required.'}
         if($version-and$version-ne$observed){throw 'Graphics Debug/Release SDK versions differ.'};$version=$observed
         foreach($relative in @('bin/ass_graphics_lib.dll','lib/ass_graphics_lib.lib','symbols/ass_graphics_lib.pdb','include/ass_graphics/ass_graphics.h','include/ass_graphics/graphics.hpp','licenses/B612-OFL.txt','licenses/NOTICE.txt','lib/cmake/AssGraphics/AssGraphicsConfig.cmake','lib/cmake/AssGraphics/AssGraphicsConfigVersion.cmake')){
             $path=Join-Path $Root "$cfg/$relative";if(-not[IO.File]::Exists($path)){throw "Graphics SDK input unavailable: $path"};$files.Add($path)

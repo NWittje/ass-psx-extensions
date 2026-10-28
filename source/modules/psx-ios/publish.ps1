@@ -6,6 +6,7 @@ param([Parameter(Mandatory=$true)][ValidateSet('Debug','Release')][string]$Confi
       [string]$AssGraphicsSdkRoot=$env:ASS_GRAPHICS_SDK_ROOT,
       [string]$GraphicsSourceRoot='')
 $ErrorActionPreference='Stop'
+if($Configuration -ne 'Release'){throw 'Project publication is Release-only; Debug remains internal qualification output.'}
 $sourceRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $repo=if((Split-Path -Leaf $sourceRoot) -eq 'source'){Split-Path -Parent $sourceRoot}else{$sourceRoot}
 $destination=Join-Path $repo "bin/$Configuration/psx-ios"

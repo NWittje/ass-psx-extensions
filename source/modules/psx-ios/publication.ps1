@@ -1,8 +1,10 @@
 param([Parameter(Mandatory)][string]$CommonPublisher)
 $script:iosCommonPublisher=[IO.Path]::GetFullPath($CommonPublisher)
-# Reviewed 2026-10-24: plugin-only license addition; all 13 imported functions are unchanged from the prior qualified bytes. Shared inventory, authority, atomic commit and
-# rollback functions. Retain the exact source guard throughout publication.
-$script:iosCommonHash='0E9D2DACCE2385F3349CA1F62B96072691D14A1E4FE61E45AB2688A14A4BD65E'
+# Reviewed 2026-10-28: all 13 imported transaction functions match the observed
+# starting publisher; the Release-only guard is outside them. The prior adapter
+# pin was already stale. This exact edition passed the publication entry and
+# rollback fixtures; retain its guard throughout publication.
+$script:iosCommonHash='4F9D501BE69E2D86465A0E7EA4194150E0867B6E270C351B1C97B227ABCA557A'
 if((Get-FileHash -LiteralPath $script:iosCommonPublisher -Algorithm SHA256).Hash-ne$script:iosCommonHash){throw 'Common publication contract differs from the qualified edition.'}
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile($script:iosCommonPublisher,[ref]$tokens,[ref]$errors)

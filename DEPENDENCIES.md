@@ -8,7 +8,7 @@ and engineering documentation are intentionally absent.
 
 | Omitted input | Intended position |
 |---|---|
-| ASS Graphics SDK | Outside the repository, selected with `ASS_GRAPHICS_SDK_ROOT` / `AssGraphics_DIR`. Keep the matched Debug/Release `include`, `lib`, `bin`, `symbols` and required supplier notices. Current DU/CDU/coordinator consumers pin 1.4.2; HWIO selects 1.4.3 or newer compatible input. No graphics implementation or SDK is included here. |
+| ASS Graphics SDK | Outside the repository, selected with `ASS_GRAPHICS_SDK_ROOT` / `AssGraphics_DIR`. Keep the matched Debug/Release `include`, `lib`, `bin`, `symbols` and required supplier notices. All current Windows graphics consumers select ASS Graphics1.4.4/ABI1 (maintained SDK position P:/development/ass_graphics_lib/sdk/1.4.4). Keep sdk-manifest.json and the configuration's original native-symbol authority with the external SDK for build qualification. No graphics implementation or SDK is included here. |
 | X-Plane SDK 4.3 | `source/external/xplane-sdk-4.3/`, including `CHeaders/XPLM` and `Libraries/Win/XPLM_64.lib`, or the explicit `XPLANE_SDK_ROOT`. |
 | LZMA SDK 26.05 | `source/external/lzma-sdk-26.05/`: qualified decoder C sources/headers and the matching `SHA256SUMS` expected by the plugin build. |
 | DU/CDU NORM supplier inputs | `source/shared/norm/vendor/norm/include/` for headers; `source/shared/norm/vendor/norm/runtime/` for `Norm.dll` and its required matching Microsoft runtime DLLs. Keep supplier licences separately. |
@@ -30,3 +30,5 @@ The retained source/build files preserve the engineering source edition. They
 can reference intentionally omitted qualification trees, local workflow helpers
 and input metadata. This import is a source inventory, not a self-contained or
 build-qualified distribution. No executable or package is published here yet.
+
+The current first-party Windows build/publication scripts also use the maintained scripts/work-cleanup.ps1, scripts/package-layout.ps1 and scripts/deployment/ helpers in the full local project. Qualification harnesses, diagnostic/testing tools and their fixtures remain omitted; these source files do not make a standalone build distribution.

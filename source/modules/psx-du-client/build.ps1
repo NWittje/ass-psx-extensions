@@ -7,11 +7,11 @@ $sourceRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $repo=if((Split-Path $sourceRoot -Leaf)-eq'source'){[IO.Path]::GetFullPath((Join-Path $sourceRoot '..'))}else{$sourceRoot}
 if(!$BuildRoot){$BuildRoot='O:\psx\bin\.work\build\psx-du-client'}
 if(!$GraphicsRoot){$GraphicsRoot=$env:ASS_GRAPHICS_SDK_ROOT}
-if(!$GraphicsRoot){throw 'Set ASS_GRAPHICS_SDK_ROOT or provide the qualified full ASS1.4.2 SDK root'}
+if(!$GraphicsRoot){throw 'Set ASS_GRAPHICS_SDK_ROOT or provide the qualified full ASS1.4.4 SDK root'}
 if($Publish-and!$PackageRoot){throw 'Explicit fresh PackageRoot required; coordinated active publication is separate'}
 . "$sourceRoot/modules/psx-du-host/tools/inputs.ps1"
 . 'O:\psx\scripts\work-cleanup.ps1' -CleanupProjectRoot 'O:\psx'
-. "$sourceRoot/modules/psx-du-host/tools/graphics142-inputs.ps1"
+. "$sourceRoot/modules/psx-du-host/tools/graphics144-inputs.ps1"
 if($PhaseReportPath){$PhaseReportPath=Resolve-DuPhaseReport $sourceRoot $PhaseReportPath}
 Assert-DuWorkRetention -KeepBuild:$KeepBuild -Consumer $BuildConsumer -ReviewEvent $ReviewEvent
 foreach($variant in $(if($Configuration-eq'All'){@('Debug','Release')}else{@($Configuration)})){
@@ -43,7 +43,7 @@ foreach($variant in $(if($Configuration-eq'All'){@('Debug','Release')}else{@($Co
  }
  $cleanupLease=Enter-WorkCleanup -WorkDirectory $build -Owner 'DUs-6.1'
  try{
-  $graphicsSdk=Get-DuGraphics142Sdk $GraphicsRoot $variant
+  $graphicsSdk=Get-DuGraphics144Sdk $GraphicsRoot $variant
   $before=@(Get-DuBuildInputs 'Client' $sourceRoot $graphics)
   New-Item -ItemType Directory -Force (Join-Path $build 'temporary')|Out-Null
   foreach($name in 'TEMP','TMP','TMPDIR'){[Environment]::SetEnvironmentVariable($name,$record.nativeOwnership.temporary,'Process')}
@@ -69,7 +69,7 @@ foreach($variant in $(if($Configuration-eq'All'){@('Debug','Release')}else{@($Co
   if((Get-FileHash -LiteralPath $record.cleanupTool.path).Hash-ne$record.cleanupTool.sha256){throw 'Cleanup tool changed during producer operation'}
   $phase='native worker closure';$record.nativeOwnership.closure=& $observeNativeClosure
   if($record.nativeOwnership.closure.residual.Count){throw 'Native worker closure unqualified; preserve owned graph for exact ownership review'}
-  $graphicsSdk=Get-DuGraphics142Sdk $GraphicsRoot $variant
+  $graphicsSdk=Get-DuGraphics144Sdk $GraphicsRoot $variant
   $stamp=[ordered]@{schema=1;product='psx-du-client';configuration=$variant;clean=[bool]$Clean;fileCountPolicy='advisory_not_scanned';inputs=$after;tests=$tests;graphicsSdk=$graphicsSdk;nativeOwnership=$record.nativeOwnership;testLogSha256=(Get-FileHash "$build/Testing/Temporary/LastTest.log").Hash}
   $stamp|ConvertTo-Json -Depth 7|Set-Content "$build/build-qualification.json" -Encoding utf8
   if($Publish){

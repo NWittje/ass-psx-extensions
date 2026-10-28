@@ -22,10 +22,10 @@ target_link_libraries(civetweb PUBLIC ws2_32)
 target_compile_options(civetweb PRIVATE /W3 /wd4100 /wd4101 /wd4127 /wd4244 /wd4267 /wd4996)
 set(ASS_GRAPHICS_SDK_ROOT "$ENV{ASS_GRAPHICS_SDK_ROOT}" CACHE PATH "Selected complete ASS Graphics SDK")
 if(NOT ASS_GRAPHICS_SDK_ROOT)
- message(FATAL_ERROR "Set ASS_GRAPHICS_SDK_ROOT to a complete ASS Graphics 1.4.2 or newer compatible SDK")
+ message(FATAL_ERROR "Set ASS_GRAPHICS_SDK_ROOT to a complete ASS Graphics 1.4.4 or newer compatible SDK")
 endif()
 file(TO_CMAKE_PATH "${ASS_GRAPHICS_SDK_ROOT}" ASS_GRAPHICS_SDK_ROOT_NORMALIZED)
-find_package(AssGraphics 1.4.2 CONFIG REQUIRED PATHS "${ASS_GRAPHICS_SDK_ROOT_NORMALIZED}/Release/lib/cmake/AssGraphics" NO_DEFAULT_PATH)
+find_package(AssGraphics 1.4.4 CONFIG REQUIRED PATHS "${ASS_GRAPHICS_SDK_ROOT_NORMALIZED}/Release/lib/cmake/AssGraphics" NO_DEFAULT_PATH)
 # The versioned supplier package exports one configuration per folder.
 # Bind both configurations from this single explicitly selected SDK.
 set_target_properties(ass::graphics PROPERTIES IMPORTED_CONFIGURATIONS "DEBUG;RELEASE" IMPORTED_LOCATION_DEBUG "${ASS_GRAPHICS_SDK_ROOT_NORMALIZED}/Debug/bin/ass_graphics_lib.dll" IMPORTED_IMPLIB_DEBUG "${ASS_GRAPHICS_SDK_ROOT_NORMALIZED}/Debug/lib/ass_graphics_lib.lib" IMPORTED_LOCATION_RELEASE "${ASS_GRAPHICS_SDK_ROOT_NORMALIZED}/Release/bin/ass_graphics_lib.dll" IMPORTED_IMPLIB_RELEASE "${ASS_GRAPHICS_SDK_ROOT_NORMALIZED}/Release/lib/ass_graphics_lib.lib")

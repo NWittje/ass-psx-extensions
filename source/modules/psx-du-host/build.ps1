@@ -7,13 +7,13 @@ $sourceRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $repo=if((Split-Path $sourceRoot -Leaf)-eq'source'){[IO.Path]::GetFullPath((Join-Path $sourceRoot '..'))}else{$sourceRoot}
 if(!$BuildRoot){$BuildRoot='O:\psx\bin\.work\build\psx-du-host'}
 if(!$GraphicsPackageRoot){$GraphicsPackageRoot=$env:ASS_GRAPHICS_SDK_ROOT}
-if(!$GraphicsPackageRoot){throw 'Set ASS_GRAPHICS_SDK_ROOT or provide the qualified full ASS1.4.2 SDK root'}
+if(!$GraphicsPackageRoot){throw 'Set ASS_GRAPHICS_SDK_ROOT or provide the qualified full ASS1.4.4 SDK root'}
 if($Publish-and!$PackageRoot){throw 'Explicit fresh PackageRoot required; coordinated active publication is separate'}
 . "$sourceRoot/modules/psx-du-host/tools/inputs.ps1"
 . 'O:\psx\scripts\work-cleanup.ps1' -CleanupProjectRoot 'O:\psx'
 if($PhaseReportPath){$PhaseReportPath=Resolve-DuPhaseReport $sourceRoot $PhaseReportPath}
 Assert-DuWorkRetention -KeepBuild:$KeepBuild -Consumer $BuildConsumer -ReviewEvent $ReviewEvent
-. "$PSScriptRoot/tools/graphics142-inputs.ps1"
+. "$PSScriptRoot/tools/graphics144-inputs.ps1"
 foreach($variant in $(if($Configuration-eq'All'){@('Debug','Release')}else{@($Configuration)})){
  $build=[IO.Path]::GetFullPath((Join-Path $BuildRoot $variant));$graphics=[IO.Path]::GetFullPath((Join-Path $GraphicsPackageRoot $variant))
  if($PhaseReportPath-and$PhaseReportPath.StartsWith($build+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Phase report must outlive the native graph'}
@@ -43,7 +43,7 @@ foreach($variant in $(if($Configuration-eq'All'){@('Debug','Release')}else{@($Co
  }
  $cleanupLease=Enter-WorkCleanup -WorkDirectory $build -Owner 'DUs-6.1'
  try{
-  $graphicsSdk=Get-DuGraphics142Sdk $GraphicsPackageRoot $variant
+  $graphicsSdk=Get-DuGraphics144Sdk $GraphicsPackageRoot $variant
   $before=@(Get-DuBuildInputs 'Host' $sourceRoot $graphics)
   New-Item -ItemType Directory -Force (Join-Path $build 'temporary')|Out-Null
   foreach($name in 'TEMP','TMP','TMPDIR'){[Environment]::SetEnvironmentVariable($name,$record.nativeOwnership.temporary,'Process')}
@@ -56,7 +56,7 @@ foreach($variant in $(if($Configuration-eq'All'){@('Debug','Release')}else{@($Co
   $phase='configure'
   $nativeStarted=$true
   $phaseReportArguments=@();if($PhaseReportPath){$phaseReportArguments+="-DPSX_DISPLAY_TOOL_REPORT=$PhaseReportPath"}
-  & cmake -S $PSScriptRoot -B $build -G 'Visual Studio 18 2026' -A x64 "-DCMAKE_PREFIX_PATH=$graphics" "-DAssGraphics_DIR=$graphics/lib/cmake/AssGraphics" "-DPSX_DU_HOST_GRAPHICS142_SDK_ROOT=$GraphicsPackageRoot" @phaseReportArguments 2>&1|Tee-Object -FilePath $nativeLog -Append|Out-Host
+  & cmake -S $PSScriptRoot -B $build -G 'Visual Studio 18 2026' -A x64 "-DCMAKE_PREFIX_PATH=$graphics" "-DAssGraphics_DIR=$graphics/lib/cmake/AssGraphics" "-DPSX_DU_HOST_GRAPHICS144_SDK_ROOT=$GraphicsPackageRoot" @phaseReportArguments 2>&1|Tee-Object -FilePath $nativeLog -Append|Out-Host
   if($LASTEXITCODE){throw 'DU host configure failed'}
   $phase='build'
   $args=@('--build',$build,'--config',$variant,'--parallel','1');if($Clean){$args+='--clean-first'}
@@ -70,7 +70,7 @@ foreach($variant in $(if($Configuration-eq'All'){@('Debug','Release')}else{@($Co
   if((Get-FileHash -LiteralPath $record.cleanupTool.path).Hash-ne$record.cleanupTool.sha256){throw 'Cleanup tool changed during producer operation'}
   $phase='native worker closure';$record.nativeOwnership.closure=& $observeNativeClosure
   if($record.nativeOwnership.closure.residual.Count){throw 'Native worker closure unqualified; preserve owned graph for exact ownership review'}
-  $graphicsSdk=Get-DuGraphics142Sdk $GraphicsPackageRoot $variant
+  $graphicsSdk=Get-DuGraphics144Sdk $GraphicsPackageRoot $variant
   $stamp=[ordered]@{schema=1;product='psx-du-host';configuration=$variant;clean=[bool]$Clean;fileCountPolicy='advisory_not_scanned';inputs=$after;tests=$tests;graphicsSdk=$graphicsSdk;nativeOwnership=$record.nativeOwnership;testLogSha256=(Get-FileHash "$build/Testing/Temporary/LastTest.log").Hash}
   $stamp|ConvertTo-Json -Depth 7|Set-Content "$build/build-qualification.json" -Encoding utf8
   if($Publish){
