@@ -15,7 +15,8 @@ public:
   ~XplaneHealthModel();
   bool status(std::string_view, std::uint64_t received_ms);
   bool logs(std::string_view);
-  void disconnected();
+  void disconnected(std::string reason = {});
+  void log_failure(std::string reason);
   bool history_supported() const;
   bool has_more() const;
   psx::health::LogCursor cursor() const;

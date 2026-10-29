@@ -77,6 +77,14 @@ psx::health::LogCursor cursor(const Json& n){
 bool same_source(const psx::health::LogCursor& a,const psx::health::LogCursor& b){return a.watchdog==b.watchdog&&a.process==b.process&&a.generation==b.generation;}
 std::optional<double> nonnegative(const Json& j){auto n=j.real();return n&&*n>=0?n:std::nullopt;}
 std::string numeric(std::optional<double> n){return n?number(*n):"null";}
+std::string json_text(const Json& j){
+  switch(j.kind){case Json::null:return "null";case Json::boolean:return j.bit?"true":"false";case Json::number:return number(j.value);case Json::text:return quote(j.string);
+  case Json::object:{std::string out="{";for(const auto& [k,v]:j.fields){if(out.size()>1)out+=',';out+=quote(k)+':'+json_text(v);}return out+'}';}
+  case Json::array:{std::string out="[";for(const auto& v:j.items){if(out.size()>1)out+=',';out+=json_text(v);}return out+']';}}
+  return "null";
+}
+bool known(const psx::health::Process& p){return p.pid&&p.birth;}
+bool known(const psx::health::LogCursor& p){return known(p.watchdog)&&known(p.process)&&p.generation;}
 const char* progress_label(std::string_view s){
   if(s=="ObservedProgress")return "Loading is progressing";if(s=="ActivityOnly")return "Activity without loading milestone";
   if(s=="NoRecentEvidence")return "No recent progress or activity";if(s=="NotLoading")return "Not loading";return "Progress unavailable";
@@ -88,7 +96,7 @@ const char* phase_label(int code){
 struct Log {
   std::uint64_t sequence{},observed{},source_sequence{};std::string text;bool partial{};
 };
-bool follows(const Log& a,const Log& b){return a.source_sequence&&b.source_sequence?a.source_sequence>=b.source_sequence:a.observed>b.observed;}
+bool follows(const Log& a,const Log& b){if(a.sequence&&b.sequence)return a.sequence>=b.sequence;return a.source_sequence&&b.source_sequence?a.source_sequence>=b.source_sequence:a.observed>b.observed;}
 Log log(const Json& n){
   if(n.get("text").kind!=Json::text||n.get("text").string.size()>4096||n.get("partial").kind!=Json::boolean)Reader::bad();
   auto native=n.get("source_sequence").kind==Json::text?n.get("source_sequence").id():0;
@@ -100,10 +108,10 @@ Log log(const Json& n){
 
 struct XplaneHealthModel::Data {
   Json sample;std::uint64_t at{};bool connected{},supported{},more{};
-  psx::health::LogCursor source{},position{};std::deque<Log> completed;std::optional<Log> partial;
+  std::string api_error,log_error;
+  psx::health::LogCursor source{},position{};std::deque<Log> completed;std::optional<Log> latest;
   void insert(Log l){
-    if(l.partial){partial=std::move(l);return;}if(!l.sequence)return;
-    if(partial&&follows(l,*partial))partial.reset();
+    if(l.partial||!l.sequence)return;
     auto i=std::find_if(completed.begin(),completed.end(),[&](const auto& r){return r.sequence==l.sequence;});
     if(i==completed.end())completed.push_back(std::move(l));else *i=std::move(l);
     std::sort(completed.begin(),completed.end(),[](const auto& a,const auto& b){return a.sequence<b.sequence;});
@@ -114,24 +122,42 @@ XplaneHealthModel::XplaneHealthModel():data_(std::make_unique<Data>()){}
 XplaneHealthModel::~XplaneHealthModel()=default;
 bool XplaneHealthModel::status(std::string_view bytes,std::uint64_t at){try{
   auto s=response(bytes,"GetStatus");auto watchdog=process(s.get("source").get("watchdog"));auto xplane=process(s.get("source").get("xplane"));
-  auto generation=s.get("log_range").get("generation").id();psx::health::LogCursor source{watchdog,xplane,generation,0};
-  std::optional<Log> latest;if(s.get("latest_log").kind!=Json::null){if(s.get("latest_log").get("generation").id()!=generation)return false;latest=log(s.get("latest_log"));}
-  auto& d=*data_;const bool supported=s.get("log_range").get("supported").yes();
-  if(!same_source(d.source,source)||d.supported!=supported){d.completed.clear();d.partial.reset();d.position={};}d.source=source;
-  d.supported=supported;d.sample=std::move(s);d.at=at;d.connected=true;
-  if(latest){if(!latest->partial){d.partial.reset();if(!d.supported&&!latest->sequence)latest->sequence=latest->source_sequence?latest->source_sequence:latest->observed;}if(latest->partial&&!d.completed.empty()&&follows(d.completed.back(),*latest))d.partial.reset();else d.insert(std::move(*latest));}
-  else d.partial.reset();return true;
+  std::uint64_t generation{};psx::health::LogCursor advertised{};std::string log_error;
+  try{if(s.get("log_range").get("generation").kind==Json::text)generation=s.get("log_range").get("generation").id();
+    if(s.get("log_range").get("supported").yes())advertised=ios::cursor(s.get("log_range").get("source"));
+  }catch(const std::exception&){log_error="Log history metadata unavailable";}
+  std::optional<Log> latest;std::uint64_t latest_generation{};
+  try{if(s.get("latest_log").kind!=Json::null){latest_generation=s.get("latest_log").get("generation").id();latest=log(s.get("latest_log"));}}
+  catch(const std::exception&){log_error="Latest log invalid";latest.reset();}
+  auto& d=*data_;const bool identity=known(watchdog)&&known(xplane);
+  const bool same_identity=d.source.watchdog==watchdog&&d.source.process==xplane;
+  // A missing history range is not evidence of a different process or log.
+  // The independently supplied latest line can precede its history record.
+  const bool history_identity=known(advertised)&&advertised.watchdog==watchdog&&advertised.process==xplane&&advertised.generation==generation;
+  auto effective_generation=history_identity?generation:latest_generation;
+  if(!effective_generation&&same_identity)effective_generation=d.source.generation;
+  psx::health::LogCursor source{watchdog,xplane,effective_generation,0};
+  if(identity&&(!same_identity||(effective_generation&&d.source.generation!=effective_generation))){d.completed.clear();d.latest.reset();d.position={};}
+  if(identity)d.source=source;
+  const bool supported=s.get("log_range").get("supported").yes()&&known(advertised)&&same_source(advertised,d.source);
+  d.supported=supported;d.more=false;
+  if(latest&&identity&&latest_generation==d.source.generation){d.latest=std::move(latest);if(d.supported)d.insert(*d.latest);}
+  else if(latest&&identity)log_error="Latest log belongs to an older generation";
+  d.sample=std::move(s);d.at=at;d.connected=true;d.api_error.clear();d.log_error=std::move(log_error);return true;
 }catch(const std::exception&){return false;}}
 bool XplaneHealthModel::logs(std::string_view bytes){try{
-  auto s=response(bytes,"GetLogs");const auto next=ios::cursor(s.get("next_cursor"));
+  auto s=response(bytes,"GetLogs");
+  if(!s.get("supported").yes()&&s.get("supported").kind==Json::boolean){data_->supported=false;data_->more=false;data_->log_error="Log history unavailable";return true;}
+  const auto next=ios::cursor(s.get("next_cursor"));
   if(!same_source(next,data_->source)||s.get("lines").kind!=Json::array||s.get("lines").items.size()>32)return false;
   std::vector<Log> lines;auto floor=s.get("reset").yes()?0:data_->position.after;
   for(const auto& j:s.get("lines").items){auto l=log(j);if(l.partial||l.sequence<=floor||j.get("generation").id()!=next.generation)return false;floor=l.sequence;lines.push_back(std::move(l));}
   if(next.after<floor)return false;
-  auto& d=*data_;if(s.get("reset").yes()){d.completed.clear();d.partial.reset();}for(auto& l:lines)d.insert(std::move(l));
-  d.position=next;d.more=s.get("has_more").yes();return true;
+  auto& d=*data_;if(s.get("reset").yes())d.completed.clear();for(auto& l:lines)d.insert(std::move(l));
+  d.position=next;d.more=s.get("has_more").yes();d.log_error.clear();return true;
 }catch(const std::exception&){return false;}}
-void XplaneHealthModel::disconnected(){data_->connected=false;}
+void XplaneHealthModel::disconnected(std::string reason){data_->connected=false;data_->api_error=reason.empty()?"Coordinator API unavailable":std::move(reason);}
+void XplaneHealthModel::log_failure(std::string reason){data_->more=false;data_->log_error=std::move(reason);}
 bool XplaneHealthModel::history_supported()const{return data_->supported;}
 bool XplaneHealthModel::has_more()const{return data_->more;}
 psx::health::LogCursor XplaneHealthModel::cursor()const{return data_->position;}
@@ -141,7 +167,7 @@ std::string XplaneHealthModel::snapshot(std::uint64_t now)const{
   const bool connected=d.connected&&s.get("communication_healthy").yes()&&age("communication")<5000;
   const bool clock=s.get("clock_valid").yes();const bool fresh=connected&&clock&&age("sdk")<=1000;
   std::string state=s.get("state").string;if(state!="Ready"&&state!="Loading"&&state!="Unknown"&&state!="Unavailable")state="Unknown";
-  if(!connected)state="Unavailable";else if(!fresh)state="Unknown";
+  if(!connected)state="Unavailable";else if(!fresh&&state!="Unavailable")state="Unknown";
   const auto code=s.get("loading").get("phase_code").real();int phase=code&&std::floor(*code)==*code&&*code>=0&&*code<=17?static_cast<int>(*code):0;
   std::string label=phase_label(phase);if(phase&&!fresh)label+=" (last known)";
   auto progress=s.get("loading").get("progress").string;
@@ -158,9 +184,12 @@ std::string XplaneHealthModel::snapshot(std::uint64_t now)const{
     if(read&&write){auto v=(*read / *interval+*write / *interval)/1000;if(std::isfinite(v))io=v;}
   }
   std::string out="{\"available\":"+std::string(connected?"true":"false")+",\"state\":"+quote(state)+",\"phase\":"+quote(label)+",\"progress\":"+quote(progress_label(progress))+",\"cpu_percent\":"+numeric(cpu)+",\"io_mb_s\":"+numeric(io)+",\"logs\":[";
-  const auto partial=d.partial&&(d.completed.empty()||!follows(d.completed.back(),*d.partial));
-  const auto start=d.completed.size()>static_cast<std::size_t>(partial?4:5)?d.completed.size()-static_cast<std::size_t>(partial?4:5):0;
-  bool comma=false;for(std::size_t i=start;i<d.completed.size();++i){if(comma)out+=',';comma=true;out+=quote(d.completed[i].text);}if(partial){if(comma)out+=',';out+=quote(d.partial->text);}return out+"]}";
+  const auto latest=d.latest&&(d.completed.empty()||!follows(d.completed.back(),*d.latest));
+  const auto start=d.completed.size()>static_cast<std::size_t>(latest?4:5)?d.completed.size()-static_cast<std::size_t>(latest?4:5):0;
+  bool comma=false;for(std::size_t i=start;i<d.completed.size();++i){if(comma)out+=',';comma=true;out+=quote(d.completed[i].text);}if(latest){if(comma)out+=',';out+=quote(d.latest->text);}
+  out+="],\"diagnostics\":{\"api_available\":"+std::string(d.connected&&elapsed<5000?"true":"false")+",\"api_error\":"+quote(d.api_error)+",\"log_error\":"+quote(d.log_error)+",\"cache_age_ms\":"+numeric(d.connected&&std::isfinite(elapsed)?std::optional(elapsed):std::nullopt)+",\"history_available\":"+(d.supported?"true":"false")+",\"effective_ages_ms\":{";
+  bool separator=false;for(auto key:{"communication","sdk","process","log","progress","activity"}){if(separator)out+=',';separator=true;auto n=age(key);out+=quote(key)+':'+numeric(std::isfinite(n)?std::optional(n):std::nullopt);}
+  return out+"},\"observation\":"+json_text(s)+"}}";
 }
 
 struct XplaneHealth::Impl {
@@ -172,12 +201,12 @@ struct XplaneHealth::Impl {
     while(!ending){
       const auto start=std::chrono::steady_clock::now();std::string body;std::uint32_t error{};
       lock.unlock();bool ok=client.get_status(body,error);lock.lock();
-      if(ok)ok=model.status(body,now());if(!ok){model.disconnected();client.close();}
+      const bool received=ok;if(ok)ok=model.status(body,now());if(!ok){model.disconnected(received?"Invalid coordinator status reply":"Status API unavailable (Windows error "+std::to_string(error)+")");client.close();}
       // Drain bounded retained pages, coalescing into five rows. An error ends
       // this turn; a disconnected pipe is retried at the ordinary one-second turn.
       for(unsigned page=0;ok&&!ending&&model.history_supported()&&page<8;++page){
         auto position=model.cursor();lock.unlock();ok=client.get_logs(position,32,body,error);lock.lock();
-        if(ok)ok=model.logs(body);if(!ok){model.disconnected();client.close();break;}if(!model.has_more())break;
+        const bool received_logs=ok;if(ok)ok=model.logs(body);if(!ok){model.log_failure(received_logs?"Invalid coordinator log reply":"Log read unavailable (Windows error "+std::to_string(error)+")");client.close();break;}if(!model.has_more())break;
       }
       cv.wait_until(lock,start+std::chrono::seconds(1),[&]{return ending;});
     }client.close();

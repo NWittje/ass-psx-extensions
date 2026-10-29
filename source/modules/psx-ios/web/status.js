@@ -86,6 +86,23 @@
   $('status-xplane-io').textContent=Number.isFinite(s?.io_mb_s)?s.io_mb_s.toFixed(1)+' MB/s':'—';
   const rows=$('status-xplane-logs').children,lines=Array.isArray(s?.logs)?s.logs.slice(-5):[];
   for(let i=0;i<rows.length;++i)rows[i].textContent=typeof lines[i]==='string'?lines[i]:'';
+  const d=s?.diagnostics,o=d?.observation||{},source=o.source||{},a=o.activity||{},loading=o.loading||{},ages=d?.effective_ages_ms||{};
+  const stamp=n=>Number.isFinite(n)?(n<1000?Math.round(n)+' ms':(n/1000).toFixed(1)+' s'):'—';
+  const id=n=>n&&String(n)!=='0'?String(n):'—',delta=n=>Number.isFinite(n)?String(n):'—';
+  const details=[
+   'Status API: '+(d?.api_available?'available':'unavailable')+(d?.api_error?' · '+d.api_error:''),
+   'Watchdog link: '+(o.communication_healthy?'available':'unavailable')+' · Clock: '+(o.clock_valid?'valid':'unavailable'),
+   'X-Plane process: '+(o.presence||'Unknown')+(Number.isFinite(o.query_error)&&o.query_error?' ('+o.query_error+')':''),
+   'Watchdog PID: '+id(source.watchdog?.pid)+' · X-Plane PID: '+id(source.xplane?.pid),
+   'Plugin load/lifecycle: '+id(source.plugin_load)+' / '+id(source.lifecycle),
+   'Source ages — link: '+stamp(ages.communication)+' · SDK: '+stamp(ages.sdk),
+   'Process: '+stamp(ages.process)+' · Log: '+stamp(ages.log)+' · API cache: '+stamp(d?.cache_age_ms),
+   'Startup: '+stamp(loading.startup_elapsed_ms)+' · Loading: '+stamp(loading.elapsed_ms),
+   'Logical processors: '+delta(a.logical_processor_count)+' · Interval: '+stamp(a.interval_ms),
+   'Flight/render callbacks: '+delta(a.flight_callbacks_delta)+' / '+delta(a.render_callbacks_delta),
+   'Log history: '+(d?.history_available?'available':'unavailable')+(d?.log_error?' · '+d.log_error:'')
+  ];
+  $('status-xplane-detail-lines').textContent=details.join('\n');
  }
  async function pollSummary(g){if(!visible||g!==summaryGeneration)return;const start=performance.now();try{const results=await Promise.allSettled([globalThis.IOSStatusAPI('status/summary',selection||undefined),globalThis.IOSStatusAPI('status/xplane')]);if(g===summaryGeneration&&visible){summary(results[0].status==='fulfilled'?results[0].value:null);xplane(results[1].status==='fulfilled'?results[1].value:null);}}finally{if(visible&&g===summaryGeneration)summaryTimer=setTimeout(()=>pollSummary(g),Math.max(0,1000-(performance.now()-start)));}}
  globalThis.StatusUI={setVisible(on){if(visible===on)return;visible=on;++fastGeneration;++summaryGeneration;clearTimeout(fastTimer);clearTimeout(summaryTimer);if(on){pollFast(fastGeneration);pollSummary(summaryGeneration);}},setUnits(v){units=v;},selection(a,r){const next=a&&r?{airport:a,runway:r}:null;if(JSON.stringify(next)!==JSON.stringify(selection))selectionChanged=true;selection=next;},render(s){damage?.update(s,[]);if(!s?.ready){traceFloor=0;lastRunway='';selectionChanged=false;retainedTrace=[];retainedRunway=null;traceGeneration=null;controls(null);summary(null);}}};
