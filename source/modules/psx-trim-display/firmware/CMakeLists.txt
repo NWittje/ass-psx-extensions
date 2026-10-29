@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-set(PROJECT_VER "0.1.2")
+set(PROJECT_VER "1.0.0")
 if(NOT DEFINED TRIM_ROLE OR NOT TRIM_ROLE MATCHES "^[12]$")
   message(FATAL_ERROR "Select fixed TRIM_ROLE=1 (captain) or 2 (first officer)")
 endif()

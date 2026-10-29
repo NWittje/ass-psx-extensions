@@ -19,7 +19,7 @@
 
 namespace trim::esp32 {
 static constexpr Role role=Role(TRIM_BUILD_ROLE);
-static constexpr std::uint32_t firmware_version=0x00010002;
+static constexpr std::uint32_t firmware_version=0x01000000;
 static std::uint64_t now() noexcept {return std::uint64_t(esp_timer_get_time());}
 struct RenderReport {std::uint32_t session{},sequence{},stack{};bool applied{},fault{true};Mode mode{Mode::unavailable};};
 static QueueHandle_t observations{}, reports{};

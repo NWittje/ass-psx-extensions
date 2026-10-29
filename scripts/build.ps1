@@ -5,6 +5,7 @@ param(
     [string]$Generator = 'Visual Studio 18 2026',
     [string]$XPlaneSdkRoot = '',
     [string]$JavaHome = '',
+    [string]$PsxJar = '',
     [string]$GraphicsSdkRoot = '',
     [string]$WorkDirectory = '',
     [string]$SourceDirectory = '',
@@ -23,6 +24,12 @@ if(-not (Test-Path -LiteralPath (Join-Path $sourceRoot 'modules') -PathType Cont
 # File count is advisory. Admit builds by resources/dependencies; close temporary
 # output through docs/operations/task-housekeeping.md rather than a numeric gate.
 if($Publish -and $SkipTests) { throw 'Publication requires matching tests; SkipTests builds remain unqualified.' }
+# Qualification inspects installed PSX class bytes without starting PSX.
+if($Module -in @('All','Exporter') -and -not $SkipTests){
+    if(-not $PsxJar -or -not [IO.Path]::IsPathFullyQualified($PsxJar) -or -not (Test-Path -LiteralPath $PsxJar -PathType Leaf)){
+        throw 'Supply PsxJar: the installed Aerowinx.jar used as read-only exporter qualification data.'
+    }
+}
 if(-not $XPlaneSdkRoot) { $XPlaneSdkRoot = Join-Path $sourceRoot 'external/xplane-sdk-4.3' }
 # Each module pins its qualified graphics version. An explicit override remains
 # available; a shared legacy default must not replace the individual pins.
@@ -59,7 +66,7 @@ try {
         switch($product) {
             Plugin { $arguments += @('-DPSX_XPLANE_PUBLISH_BINARIES=OFF',"-DXPLANE_SDK_ROOT=$XPlaneSdkRoot") }
             Coordinator { $arguments += @('-DCOORDINATOR_PUBLISH_BINARIES=OFF',"-DCOORDINATOR_TRAFFIC_SDK_ROOT=$XPlaneSdkRoot"); if($GraphicsSdkRoot) { $arguments += "-DASS_GRAPHICS_SDK_ROOT=$GraphicsSdkRoot" } }
-            Exporter { $arguments += '-DPSX_EXPORTER_PUBLISH=OFF'; if($JavaHome) { $arguments += "-DPSX_EXPORTER_JAVA_HOME=$JavaHome" } }
+            Exporter { $arguments += '-DPSX_EXPORTER_PUBLISH=OFF'; if($JavaHome) { $arguments += "-DPSX_EXPORTER_JAVA_HOME=$JavaHome" }; if($PsxJar) { $arguments += "-DPSX_EXPORTER_TEST_PSX_JAR=$PsxJar" } }
             HWIO { $arguments += '-DHWIO_PUBLISH_BINARIES=OFF'; if($GraphicsSdkRoot) { $arguments += "-DASS_GRAPHICS_SDK_ROOT=$GraphicsSdkRoot" } }
         }
         & cmake @arguments

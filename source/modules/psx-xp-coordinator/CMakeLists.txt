@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.30)
-project(psx_xp_coordinator VERSION 3.19.2 LANGUAGES CXX)
+project(psx_xp_coordinator VERSION 1.0.0 LANGUAGES CXX)
 if(NOT TARGET psx_concurrency)
   add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../shared/concurrency" "${CMAKE_CURRENT_BINARY_DIR}/shared-concurrency")
 endif()

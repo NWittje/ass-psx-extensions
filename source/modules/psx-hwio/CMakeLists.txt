@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(psx_hwio VERSION 1.28.4 LANGUAGES CXX RC)
+project(psx_hwio VERSION 1.0.0 LANGUAGES CXX RC)
 
 get_filename_component(PSX_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
 

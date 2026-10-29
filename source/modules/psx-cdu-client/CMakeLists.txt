@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.30)
-project(psx_cdu_client VERSION 0.1.11 LANGUAGES CXX)
+project(psx_cdu_client VERSION 1.0.0 LANGUAGES CXX)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../shared/windows-version/VersionInfo.cmake")
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../shared/windows-icons/WindowsIcons.cmake")
 set(CMAKE_CXX_STANDARD 20)

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(psx_xplane_plugin VERSION 0.21.1 LANGUAGES C CXX)
+project(psx_xplane_plugin VERSION 1.0.0 LANGUAGES C CXX)
 # The isolated shared protocol test must use the same static runtime as its library.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../shared/windows-version/VersionInfo.cmake")

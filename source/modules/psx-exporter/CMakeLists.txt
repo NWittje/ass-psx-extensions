@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(psx_exporter VERSION 0.24.2 LANGUAGES CXX)
+project(psx_exporter VERSION 1.0.0 LANGUAGES CXX)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../shared/windows-icons/WindowsIcons.cmake")
 if(NOT WIN32 OR NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
   message(FATAL_ERROR "PSX exporter requires native MSVC Windows x64")
