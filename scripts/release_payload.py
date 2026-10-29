@@ -216,7 +216,9 @@ def make_plan(binary_root, sdk, source, work, profile="all"):
                     nested = {}
                 expected_bytes = entry.get("bytes", entry.get("size", nested.get("bytes")))
                 expected_sha = entry.get("sha256", nested.get("sha256"))
-                if file.stat().st_size != expected_bytes or sha(file) != expected_sha:
+                if not isinstance(expected_sha, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", expected_sha):
+                    raise ValueError(f"Invalid operating payload digest: {product}/{relative}")
+                if file.stat().st_size != expected_bytes or sha(file) != expected_sha.upper():
                     raise ValueError(f"Qualified operating payload changed: {product}/{relative}")
             if file.suffix.lower() in (".exe", ".dll", ".xpl"):
                 machine, dependencies = pe_imports(file)
