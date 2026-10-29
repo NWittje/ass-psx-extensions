@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-find_package(AssGraphics 1.4.4 EXACT CONFIG REQUIRED)
+find_package(AssGraphics 1.4.5 EXACT CONFIG REQUIRED)
 enable_testing()
 # The receiver composes CDU foundations directly; it has no DU host runtime.
 add_subdirectory(../../shared/cdu cdu)
@@ -71,3 +71,6 @@ add_test(NAME cdu_client_loopback_processes COMMAND "${PWSH}" -NoProfile -File "
 set_tests_properties(cdu_client_loopback_processes PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
 
 psx_stamp_directory("${CMAKE_CURRENT_SOURCE_DIR}" "${PROJECT_VERSION}")
+
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../shared/windows-runtime/GraphicsRuntime.cmake")
+psx_shared_graphics_runtime(psx-cdu-client)

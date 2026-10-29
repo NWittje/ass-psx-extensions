@@ -48,9 +48,9 @@ if(NOT TARGET psx_diagnostics)
 
 endif()
 
-set(ASS_GRAPHICS_SDK_ROOT "P:/development/ass_graphics_lib/sdk/1.4.4" CACHE PATH "Qualified ASS Graphics 1.4.4 or newer matched Debug/Release SDK inputs")
+set(ASS_GRAPHICS_SDK_ROOT "P:/development/ass_graphics_lib/sdk/internal/1.4.5" CACHE PATH "Qualified ASS Graphics 1.4.5 or newer matched Debug/Release SDK inputs")
 
-find_package(AssGraphics 1.4.4 CONFIG REQUIRED PATHS "${ASS_GRAPHICS_SDK_ROOT}/Release/lib/cmake/AssGraphics" NO_DEFAULT_PATH)
+find_package(AssGraphics 1.4.5 CONFIG REQUIRED PATHS "${ASS_GRAPHICS_SDK_ROOT}/Release/lib/cmake/AssGraphics" NO_DEFAULT_PATH)
 
 set_property(TARGET ass::graphics APPEND PROPERTY IMPORTED_CONFIGURATIONS DEBUG)
 
@@ -1011,3 +1011,6 @@ add_custom_target(hwio_stepper_control_checks DEPENDS psx-hwio hwio-fds-replay
 
   hwio_motor_control_checks hwio_phidget_io_tests hwio_analogue_layout_tests)
 
+
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../shared/windows-runtime/GraphicsRuntime.cmake")
+psx_shared_graphics_runtime(psx-hwio)

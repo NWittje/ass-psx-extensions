@@ -3,7 +3,7 @@ param([ValidateSet('All','Debug','Release')][string]$Configuration='All',[switch
 $ErrorActionPreference='Stop'
 $sourceRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $repo=if((Split-Path $sourceRoot -Leaf)-eq'source'){[IO.Path]::GetFullPath((Join-Path $sourceRoot '..'))}else{$sourceRoot}
-if(!$GraphicsPackageRoot){throw 'Supply the qualified two-configuration ASS1.4.4 SDK root'}
+if(!$GraphicsPackageRoot){throw 'Supply the qualified two-configuration ASS1.4.5 SDK root'}
 if(!$OutputRoot){$OutputRoot=Join-Path $repo 'bin'}
 $OutputRoot=[IO.Path]::GetFullPath($OutputRoot)
 $workRoot='O:\psx\bin\.work'
@@ -120,7 +120,7 @@ function FlushPayload([string]$build,[string]$TeraCopyPath='C:\Program Files\Ter
 }
 function Inputs([string]$variant,[string]$build,[string]$graphics,[bool]$IncludeBinary=$true){
  $paths=@()
- foreach($part in @('modules/psx-cdu-client','shared/cdu','shared/graphics-sdk','shared/norm','shared/display-transport/include','shared/network-io','shared/diagnostics','shared/windows-version')){
+ foreach($part in @('modules/psx-cdu-client','shared/cdu','shared/graphics-sdk','shared/norm','shared/display-transport/include','shared/network-io','shared/diagnostics','shared/windows-version','shared/windows-runtime')){
   $paths+=@(Get-ChildItem (Join-Path $sourceRoot $part) -Recurse -File | Where-Object { $_.FullName -notmatch '[\\/](build|__pycache__)[\\/]' } | Select-Object -ExpandProperty FullName)
  }
  foreach($part in @('include','lib','bin','symbols','licenses')){$paths+=@(Get-ChildItem "$graphics/$part" -Recurse -File | Select-Object -ExpandProperty FullName)}
@@ -251,7 +251,7 @@ foreach($variant in $(if($Configuration -eq 'All'){@('Debug','Release')}else{@($
   [ordered]@{path=$relative;bytes=$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName).Hash;purpose=$purposes[$relative]}
  })
  Confirm-DisplayPackageLayout CduClient @($files.path)
- [ordered]@{product='psx-cdu-client';version=$clientVersion;configuration=$variant;graphics='1.4.4';abi=1;cduWire=1;blackoutWire=1;shaderRevision=1;effectsDefault='off';normRuntime='1.5.7';normSourceTag='v1.5.9';utc=[DateTime]::UtcNow.ToString('o');layout='runtime-v1';qualification=[ordered]@{clean=$stamp.clean;testLogSha256=$stamp.testLogSha256};mutableExcluded=@('settings.cfg','settings.cfg.bak','profiles/*.cfg','profiles/*.cfg.bak');files=$files;sourceHashes=$inputs} | ConvertTo-Json -Depth 7 | Set-Content "$package/manifest.json" -Encoding utf8
+ [ordered]@{product='psx-cdu-client';version=$clientVersion;configuration=$variant;graphics='1.4.5';abi=1;cduWire=1;blackoutWire=1;shaderRevision=1;effectsDefault='off';normRuntime='1.5.7';normSourceTag='v1.5.9';utc=[DateTime]::UtcNow.ToString('o');layout='runtime-v1';qualification=[ordered]@{clean=$stamp.clean;testLogSha256=$stamp.testLogSha256};mutableExcluded=@('settings.cfg','settings.cfg.bak','profiles/*.cfg','profiles/*.cfg.bak');files=$files;sourceHashes=$inputs} | ConvertTo-Json -Depth 7 | Set-Content "$package/manifest.json" -Encoding utf8
  $manifestSha256=(Get-FileHash -LiteralPath "$package/manifest.json").Hash
  . "$repo/scripts/package-layout.ps1"
  AssertRuntimePackageLayout -Directory $package -Product 'psx-cdu-client'

@@ -7,7 +7,7 @@ $sourceRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $repo=if((Split-Path $sourceRoot -Leaf)-eq'source'){[IO.Path]::GetFullPath((Join-Path $sourceRoot '..'))}else{$sourceRoot}
 if(!$BuildRoot){$BuildRoot='O:\psx\bin\.work\build\psx-du-client'}
 if(!$GraphicsRoot){$GraphicsRoot=$env:ASS_GRAPHICS_SDK_ROOT}
-if(!$GraphicsRoot){throw 'Set ASS_GRAPHICS_SDK_ROOT or provide the qualified full ASS1.4.4 SDK root'}
+if(!$GraphicsRoot){throw 'Set ASS_GRAPHICS_SDK_ROOT or provide the qualified full ASS1.4.5 SDK root'}
 if($Publish-and!$PackageRoot){throw 'Explicit fresh PackageRoot required; coordinated active publication is separate'}
 . "$sourceRoot/modules/psx-du-host/tools/inputs.ps1"
 . 'O:\psx\scripts\work-cleanup.ps1' -CleanupProjectRoot 'O:\psx'

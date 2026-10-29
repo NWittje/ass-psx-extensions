@@ -116,7 +116,7 @@ function ReleaseCduPublicationLease($Lease,$Errors){
 SyncIdentity (Join-Path $candidate 'manifest.json') $plan.manifestBytes $plan.manifestSHA256
 $manifest=Get-Content -LiteralPath (Join-Path $candidate 'manifest.json') -Raw|ConvertFrom-Json
 if($manifest.product-cne'psx-cdu-client'-or$manifest.version-cne'0.1.8'-or$manifest.configuration-cne$configuration-or
- $manifest.graphics-cne'1.4.4'-or!$manifest.qualification.clean-or$manifest.qualification.testSummary-cne("$(@($manifest.qualification.testGroups).Count)/$(@($manifest.qualification.testGroups).Count) passed")-or@($manifest.qualification.testGroups).Count-lt28){throw 'Matching complete native qualification required'}
+ $manifest.graphics-cne'1.4.5'-or!$manifest.qualification.clean-or$manifest.qualification.testSummary-cne("$(@($manifest.qualification.testGroups).Count)/$(@($manifest.qualification.testGroups).Count) passed")-or@($manifest.qualification.testGroups).Count-lt28){throw 'Matching complete native qualification required'}
 Verify $candidate $plan.candidateFiles -Exact
 Verify $candidate $manifest.files
 $mutable=@($plan.activeFiles|Where-Object{Mutable $_.path})

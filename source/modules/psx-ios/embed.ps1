@@ -5,7 +5,7 @@ $ErrorActionPreference='Stop'
 $drawing=Get-AircraftDamageSvg
 $statusDrawing=Get-AircraftDamageSvg -Instance status
 $traffic=Get-TrafficAircraftSymbols
-$assets=@(@('/','text/html; charset=utf-8','web/index.html'),@('/ios.css','text/css; charset=utf-8','web/ios.css'),@('/ios.js','application/javascript; charset=utf-8','web/ios.js'),@('/environment.js','application/javascript; charset=utf-8','web/environment.js'),@('/environment.css','text/css; charset=utf-8','web/environment.css'),@('/B612-Regular.ttf','font/ttf','vendor/fonts/B612-Regular.ttf'),@('/B612-Bold.ttf','font/ttf','vendor/fonts/B612-Bold.ttf'))
+$assets=@(@('/','text/html; charset=utf-8','web/index.html'),@('/ios.css','text/css; charset=utf-8','web/ios.css'),@('/ios.js','application/javascript; charset=utf-8','web/ios.js'),@('/environment.js','application/javascript; charset=utf-8','web/environment.js'),@('/environment.css','text/css; charset=utf-8','web/environment.css'))
 $assets+=,@('/non_normal.js','application/javascript; charset=utf-8','web/non_normal.js')
 $assets+=,@('/non_normal.css','text/css; charset=utf-8','web/non_normal.css')
 $assets+=,@('/weight_service.js','application/javascript; charset=utf-8','web/weight_service.js')

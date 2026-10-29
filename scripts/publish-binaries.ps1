@@ -790,7 +790,7 @@ try {
     $files = @(Get-ChildItem -LiteralPath $stage -File -Recurse | ForEach-Object {
         [ordered]@{Path=$_.FullName.Substring($stage.Length+1);Bytes=$_.Length;SHA256=(FileHash $_.FullName);Source=$origins[$_.FullName]}
     })
-    $manifest = [ordered]@{Product=$Module;Configuration=$Configuration;PublishedUtc=[DateTime]::UtcNow.ToString('o');BuildDirectory=$buildRoot;Toolset=$toolVersion;Tests='Build publication is not a test-pass certificate; see build/test reports.';Files=$files;Dependencies=@($imports.ToArray())}
+    $manifest = [ordered]@{Product=$Module;Configuration=$Configuration;PublishedUtc=[DateTime]::UtcNow.ToString('o');BuildDirectory=$buildRoot;Toolset=$toolVersion;Tests='Build publication is not a test-pass certificate; see build/test reports.';RuntimeLayout=$(if($Module-in'Plugin','Coordinator','Watchdog'-and(Test-Path -LiteralPath (Join-Path $sourceRoot 'shared/windows-runtime/include/psx/windows/runtime_dependency.hpp'))){'adjacent-or-parent-v1'}else{'app-local-v1'});Files=$files;Dependencies=@($imports.ToArray())}
     [IO.File]::WriteAllText((Join-Path $stage 'package-manifest.json'),($manifest | ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))
     # Ordinary replacement retains settings. A requested clean delivery seeds
     # current defaults instead, without importing an earlier operator profile.

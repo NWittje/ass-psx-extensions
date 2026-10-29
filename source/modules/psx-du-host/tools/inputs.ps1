@@ -149,7 +149,7 @@ function Complete-DuWorkPhase([string]$Repository,[string]$Phase,[string]$Direct
 
 function Get-DuBuildInputs([string]$Product,[string]$Repository,[string]$Graphics){
  $name=if($Product-eq'Host'){'psx-du-host'}else{'psx-du-client'}
- $parts=@("modules/$name",'shared/norm','shared/graphics-sdk','shared/display-transport','shared/display-replay','shared/network-io','shared/windows-version')
+ $parts=@("modules/$name",'shared/norm','shared/graphics-sdk','shared/display-transport','shared/display-replay','shared/network-io','shared/windows-version','shared/windows-runtime')
  if($Product-eq'Host'){$parts+=@('shared/cdu','shared/diagnostics')}
  $paths=@(foreach($part in $parts){Get-ChildItem "$Repository/$part" -Recurse -File|Where-Object Name -ne 'AGENTS.md'|Select-Object -ExpandProperty FullName})
  $paths+=@('WindowsIcons.cmake','application-icon.rc.in','application-icon.hpp','DU.ico'|ForEach-Object{"$Repository/shared/windows-icons/$_"})
@@ -158,7 +158,7 @@ function Get-DuBuildInputs([string]$Product,[string]$Repository,[string]$Graphic
   $paths+=@('inputs.ps1','package.ps1','publish.ps1','transfer.ps1','runtime-payload.ps1'|ForEach-Object{"$Repository/modules/psx-du-host/tools/$_"})
  }
  # Declare the full shared144-member SDK and its vector, not a copied DLL.
- if((Get-Content -LiteralPath "$Graphics/lib/cmake/AssGraphics/AssGraphicsConfigVersion.cmake" -Raw)-match'PACKAGE_VERSION "1\.4\.4"'){
+ if((Get-Content -LiteralPath "$Graphics/lib/cmake/AssGraphics/AssGraphicsConfigVersion.cmake" -Raw)-match'PACKAGE_VERSION "1\.4\.5"'){
   $sdkHelper="$Repository/modules/psx-du-host/tools/graphics144-inputs.ps1"
   . $sdkHelper
   $sdk=Get-DuGraphics144Sdk (Split-Path $Graphics -Parent) (Split-Path $Graphics -Leaf)

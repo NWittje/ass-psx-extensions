@@ -41,3 +41,7 @@ if(WIN32)
   target_link_libraries(psx_sync_network PUBLIC psx_bridge_protocol psx_terrain psx_aircraft_sync psx_environment psx_status psx_traffic_visual psx_non_normal PRIVATE ws2_32 bcrypt)
   # Follow the consumer graph's CRT selection (coordinator /MD, plugin /MT).
 endif()
+
+if(WIN32)
+  target_include_directories(psx_sync_network PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../windows-runtime/include")
+endif()

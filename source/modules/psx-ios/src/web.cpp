@@ -4,6 +4,9 @@
 #include <ios/web.hpp>
 #include <set>
 #include <memory>
+#include <fstream>
+#include <array>
+#include <psx/windows/runtime_dependency.hpp>
 namespace ios {
 namespace {
 struct Site {
@@ -12,6 +15,28 @@ struct Site {
   std::mutex log_mutex;
   std::string last_error;
 };
+// Cache the two operator-supplied font files once. Request workers borrow
+// immutable bytes; they never reopen a font or depend on the working directory.
+const std::array<std::string, 2>& external_fonts() {
+  static const auto fonts = [] {
+    std::array<std::string, 2> data;
+    const auto directory = psx::windows::runtime_module_directory(reinterpret_cast<const void*>(&external_fonts));
+    constexpr const wchar_t* names[]{L"B612-Regular.ttf", L"B612-Bold.ttf"};
+    for (unsigned index = 0; index < data.size(); ++index) {
+      const auto path = psx::windows::runtime_dependency_path(directory, names[index]);
+      std::ifstream file(path, std::ios::binary | std::ios::ate);
+      if (!file) continue;
+      const auto length = file.tellg();
+      if (length <= 0 || length > 16 * 1024 * 1024) continue;
+      auto& bytes = data[index];
+      bytes.resize(static_cast<std::size_t>(length));
+      file.seekg(0);
+      if (!file.read(bytes.data(), static_cast<std::streamsize>(bytes.size()))) bytes.clear();
+    }
+    return data;
+  }();
+  return fonts;
+}
 std::string lower(std::string s) {
   std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
     return char(c >= 'A' && c <= 'Z' ? c + 32 : c);
@@ -101,6 +126,11 @@ int request(mg_connection *c) {
         if (id.empty() || r.ec != std::errc{} || r.ptr != id.data() + id.size())
           return error(c, 400, "Invalid operation ID");
         return reply(c, 200, site.runtime.operation(n));
+      }
+      if (route == "/B612-Regular.ttf" || route == "/B612-Bold.ttf") {
+        const auto& font = external_fonts()[route == "/B612-Regular.ttf" ? 0 : 1];
+        return font.empty() ? error(c, 404, "Place B612-Regular.ttf and B612-Bold.ttf beside IOS or one folder above")
+                            : reply(c, 200, font, "font/ttf");
       }
       for (const auto &a : assets())
         if (route == a.route)

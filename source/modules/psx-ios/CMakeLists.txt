@@ -22,16 +22,16 @@ target_link_libraries(civetweb PUBLIC ws2_32)
 target_compile_options(civetweb PRIVATE /W3 /wd4100 /wd4101 /wd4127 /wd4244 /wd4267 /wd4996)
 set(ASS_GRAPHICS_SDK_ROOT "$ENV{ASS_GRAPHICS_SDK_ROOT}" CACHE PATH "Selected complete ASS Graphics SDK")
 if(NOT ASS_GRAPHICS_SDK_ROOT)
- message(FATAL_ERROR "Set ASS_GRAPHICS_SDK_ROOT to a complete ASS Graphics 1.4.4 or newer compatible SDK")
+ message(FATAL_ERROR "Set ASS_GRAPHICS_SDK_ROOT to a complete ASS Graphics 1.4.5 or newer compatible SDK")
 endif()
 file(TO_CMAKE_PATH "${ASS_GRAPHICS_SDK_ROOT}" ASS_GRAPHICS_SDK_ROOT_NORMALIZED)
-find_package(AssGraphics 1.4.4 CONFIG REQUIRED PATHS "${ASS_GRAPHICS_SDK_ROOT_NORMALIZED}/Release/lib/cmake/AssGraphics" NO_DEFAULT_PATH)
+find_package(AssGraphics 1.4.5 CONFIG REQUIRED PATHS "${ASS_GRAPHICS_SDK_ROOT_NORMALIZED}/Release/lib/cmake/AssGraphics" NO_DEFAULT_PATH)
 # The versioned supplier package exports one configuration per folder.
 # Bind both configurations from this single explicitly selected SDK.
 set_target_properties(ass::graphics PROPERTIES IMPORTED_CONFIGURATIONS "DEBUG;RELEASE" IMPORTED_LOCATION_DEBUG "${ASS_GRAPHICS_SDK_ROOT_NORMALIZED}/Debug/bin/ass_graphics_lib.dll" IMPORTED_IMPLIB_DEBUG "${ASS_GRAPHICS_SDK_ROOT_NORMALIZED}/Debug/lib/ass_graphics_lib.lib" IMPORTED_LOCATION_RELEASE "${ASS_GRAPHICS_SDK_ROOT_NORMALIZED}/Release/bin/ass_graphics_lib.dll" IMPORTED_IMPLIB_RELEASE "${ASS_GRAPHICS_SDK_ROOT_NORMALIZED}/Release/lib/ass_graphics_lib.lib")
 add_library(ass_ios ALIAS ass::graphics)
 set(ASSETS "${CMAKE_CURRENT_BINARY_DIR}/embedded_assets.cpp")
-add_custom_command(OUTPUT "${ASSETS}" COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_CURRENT_SOURCE_DIR}/embed.ps1" -Output "${ASSETS}" DEPENDS embed.ps1 aircraft-svg.ps1 traffic-svg.ps1 "../../external/744_sideview_facing_right.svg" "../../external/738_sideview_facing_left.svg" "../../external/738_sideview_facing_right.svg" "../../external/747-400-top-front.svg" "../../shared/psx-instructor/src/failure_catalogue.inc" web/aircraft_damage.js web/non_normal.js web/non_normal.css web/controls.js web/altitude.js web/themes.css web/reposition_graphic.js web/index.html web/ios.css web/ios.js web/terrain_preflight.js web/environment.js web/environment.css web/weight_service.js web/weight_service.css web/status.js web/status.css web/situations.js web/situations.css vendor/fonts/B612-Regular.ttf vendor/fonts/B612-Bold.ttf VERBATIM)
+add_custom_command(OUTPUT "${ASSETS}" COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_CURRENT_SOURCE_DIR}/embed.ps1" -Output "${ASSETS}" DEPENDS embed.ps1 aircraft-svg.ps1 traffic-svg.ps1 "../../external/744_sideview_facing_right.svg" "../../external/738_sideview_facing_left.svg" "../../external/738_sideview_facing_right.svg" "../../external/747-400-top-front.svg" "../../shared/psx-instructor/src/failure_catalogue.inc" web/aircraft_damage.js web/non_normal.js web/non_normal.css web/controls.js web/altitude.js web/themes.css web/reposition_graphic.js web/index.html web/ios.css web/ios.js web/terrain_preflight.js web/environment.js web/environment.css web/weight_service.js web/weight_service.css web/status.js web/status.css web/situations.js web/situations.css VERBATIM)
 add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/Debug/environment-time.bin" "${CMAKE_CURRENT_BINARY_DIR}/Release/environment-time.bin" COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/Debug" "${CMAKE_CURRENT_BINARY_DIR}/Release" COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/vendor/time/environment-time.bin" "${CMAKE_CURRENT_BINARY_DIR}/Debug/environment-time.bin" COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/vendor/time/environment-time.bin" "${CMAKE_CURRENT_BINARY_DIR}/Release/environment-time.bin" DEPENDS vendor/time/environment-time.bin VERBATIM)
 add_custom_target(ios_time_data ALL DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/Debug/environment-time.bin" "${CMAKE_CURRENT_BINARY_DIR}/Release/environment-time.bin")
 add_library(ios_core STATIC src/core.cpp src/runtime.cpp src/airport.cpp src/non_normal.cpp src/visibility.cpp src/terrain_preflight.cpp)
@@ -189,3 +189,8 @@ add_test(NAME ios_terrain_http COMMAND ios_tests terrain "${CMAKE_BINARY_DIR}/ev
 set_tests_properties(ios_terrain_http PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../shared/windows-version/VersionInfo.cmake")
 psx_stamp_directory("${CMAKE_CURRENT_SOURCE_DIR}" "${PROJECT_VERSION}")
+
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../shared/windows-runtime/GraphicsRuntime.cmake")
+psx_shared_graphics_runtime(psx-ios)
+
+target_include_directories(ios_web PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../shared/windows-runtime/include")

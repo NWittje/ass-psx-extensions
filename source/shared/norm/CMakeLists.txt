@@ -8,3 +8,5 @@ target_compile_features(psx_norm PUBLIC cxx_std_20)
 target_compile_definitions(psx_norm PRIVATE NORM_USE_DLL WIN32 NOMINMAX WIN32_LEAN_AND_MEAN)
 target_compile_options(psx_norm PRIVATE /Zi /W4 /utf-8)
 target_link_libraries(psx_norm PRIVATE bcrypt ws2_32 iphlpapi)
+
+target_include_directories(psx_norm PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../windows-runtime/include")

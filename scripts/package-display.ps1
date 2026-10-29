@@ -46,6 +46,7 @@ function Initialize-DisplayPackaging([string]$Python) {
   "$($roots.Maintained)\source\modules\psx-du-host\tools\runtime-payload.ps1",
   "$($roots.Maintained)\source\modules\psx-du-host\tools\graphics141-inputs.ps1",
   "$($roots.Maintained)\source\modules\psx-du-host\tools\graphics144-inputs.ps1",
+  "$($roots.Maintained)\source\shared\graphics-sdk\current.ps1",
   "$($roots.Maintained)\source\shared\graphics-sdk\graphics144.ps1",
   "$($roots.Maintained)\scripts\deployment\common.ps1",
   "$($roots.Maintained)\scripts\publish-binaries.ps1",
@@ -65,7 +66,7 @@ function Initialize-DisplayPackaging([string]$Python) {
  if($verifier.Bytes-ne20196-or$verifier.SHA256-ne'583338C03F99659097FED24F6101D819318DD4542AE696A2EF977AC1BE85B1AA'){
   throw 'Qualified current DU verifier edition required; qualify any successor before use'
  }
- foreach($path in @('source\shared\graphics-sdk\graphics144.ps1','source\modules\psx-du-host\tools\inputs.ps1','source\modules\psx-du-host\tools\runtime-payload.ps1','source\modules\psx-du-host\tools\graphics141-inputs.ps1','source\modules\psx-du-host\tools\graphics144-inputs.ps1','scripts\deployment\common.ps1','scripts\publish-binaries.ps1','scripts\package-layout.ps1','scripts\verify-binaries.ps1')){
+ foreach($path in @('source\shared\graphics-sdk\current.ps1','source\shared\graphics-sdk\graphics144.ps1','source\modules\psx-du-host\tools\inputs.ps1','source\modules\psx-du-host\tools\runtime-payload.ps1','source\modules\psx-du-host\tools\graphics141-inputs.ps1','source\modules\psx-du-host\tools\graphics144-inputs.ps1','scripts\deployment\common.ps1','scripts\publish-binaries.ps1','scripts\package-layout.ps1','scripts\verify-binaries.ps1')){
   Import-DisplayPackagingFunctions (Join-Path $roots.Maintained $path)
  }
  . (Join-Path $roots.Local 'scripts\work-cleanup.ps1') -CleanupProjectRoot $roots.Local
@@ -96,9 +97,9 @@ function Get-DisplayMaintainedInput([string]$Path,[string]$Snapshot,$HostSdk=$nu
  $roots=Get-DisplayPackagingRoots
  if(-not[IO.Path]::IsPathFullyQualified($Path)-or$Path-match'(^|[\\/])\.\.?([\\/]|$)'){throw 'Native input path must be absolute without traversal'}
  $Path=[IO.Path]::GetFullPath($Path)
- if($HostSdk-and$HostSdk.profile-eq'Graphics144'-and$Path-ieq$HostSdk.vectorPath){return Get-DuGraphics144Origin $Path $HostSdk}
+ if($HostSdk-and$HostSdk.profile-eq'GraphicsCurrent'-and$Path-ieq$HostSdk.vectorPath){return Get-DuGraphics144Origin $Path $HostSdk}
  if($HostSdk-and$Path.StartsWith($HostSdk.root+'\',[StringComparison]::OrdinalIgnoreCase)){
-  if($HostSdk.profile-eq'Graphics144'){return Get-DuGraphics144Origin $Path $HostSdk}
+  if($HostSdk.profile-eq'GraphicsCurrent'){return Get-DuGraphics144Origin $Path $HostSdk}
   return Get-HostGraphics141Origin $Path $HostSdk
  }
  $prefix=[IO.Path]::GetFullPath($Snapshot).TrimEnd('\','/')+'\'
@@ -113,7 +114,7 @@ function Get-DisplayMaintainedInput([string]$Path,[string]$Snapshot,$HostSdk=$nu
 }
 function Get-DisplayGraphicsProfile([string]$Product,$Stamp) {
  if($Stamp.graphicsSdk){
-  if($Product-notin@('Host','Client')-or$Stamp.hostGraphics-or$Stamp.graphicsSdk.profile-cne'Graphics144'-or$Stamp.graphicsSdk.version-cne'1.4.4'-or$Stamp.graphicsSdk.abi-ne1){throw 'Unsupported graphics144 source profile'}
+  if($Product-notin@('Host','Client')-or$Stamp.hostGraphics-or$Stamp.graphicsSdk.profile-cne'GraphicsCurrent'-or$Stamp.graphicsSdk.version-cne'1.4.5'-or$Stamp.graphicsSdk.abi-ne1){throw 'Unsupported graphics144 source profile'}
   return 'Graphics144'
  }
 
@@ -142,11 +143,11 @@ function Get-DisplayPackagingNative([string]$Product,[string]$Configuration,[str
  if($stamp.schema-ne1-or$stamp.product-ne$name-or$stamp.configuration-ne$Configuration-or-not$stamp.clean-or-not$stamp.tests){throw 'Matching original clean native qualification required'}
  $hostSdk=$null
  $profile=Get-DisplayGraphicsProfile $Product $stamp
- if($profile-eq'Graphics144'){
+ if($profile-eq'GraphicsCurrent'){
   $hostSdk=Get-DuGraphics144Sdk (Split-Path $Graphics -Parent) $Configuration
   $original=$stamp.graphicsSdk
-  if([IO.Path]::GetFullPath($Graphics)-ine$hostSdk.configurationRoot-or$original.root-ine$hostSdk.root-or(Get-DisplayMaintainedInput $original.vectorPath $snapshot $hostSdk)-ine$hostSdk.vectorPath-or$original.manifestSHA256-cne$hostSdk.manifestSHA256-or@($original.files).Count-ne36){throw 'Original graphics144 complete SDK binding differs'}
-  for($i=0;$i-lt36;++$i){$old=$original.files[$i];$actual=$hostSdk.files[$i];if($old.path-ine$actual.path-or$old.origin-ine$actual.origin-or$old.relative-cne$actual.relative-or$old.bytes-ne$actual.bytes-or$old.sha256-cne$actual.sha256){throw 'Original graphics144 member correspondence differs'}}
+  if([IO.Path]::GetFullPath($Graphics)-ine$hostSdk.configurationRoot-or$original.root-ine$hostSdk.root-or(Get-DisplayMaintainedInput $original.vectorPath $snapshot $hostSdk)-ine$hostSdk.vectorPath-or$original.manifestSHA256-cne$hostSdk.manifestSHA256-or@($original.files).Count-ne@($hostSdk.files).Count){throw 'Original graphics144 complete SDK binding differs'}
+  for($i=0;$i-lt@($hostSdk.files).Count;++$i){$old=$original.files[$i];$actual=$hostSdk.files[$i];if($old.path-ine$actual.path-or$old.origin-ine$actual.origin-or$old.relative-cne$actual.relative-or$old.bytes-ne$actual.bytes-or$old.sha256-cne$actual.sha256){throw 'Original graphics144 member correspondence differs'}}
  }elseif(-not [IO.Path]::GetFullPath($Graphics).StartsWith($native+'\external\',[StringComparison]::OrdinalIgnoreCase)){throw 'Qualified legacy SDK must remain in its recorded O source snapshot'}
 
  if($profile-eq'Host141'){
@@ -179,7 +180,7 @@ function Get-DisplayPackagingNative([string]$Product,[string]$Configuration,[str
  if((SyncHash $exe)-ine$ExeHash-or(SyncHash $pdb)-ine$PdbHash){throw 'Native producer bytes differ from original owner binding'}
  $version=Get-DisplayProductVersion $Product $native
  if($version-ne(Get-DisplayProductVersion $Product (Join-Path $roots.Maintained 'source'))){throw 'Current source product version differs from native qualification'}
- $ass=if($profile-eq'Graphics144'){'1.4.4'}elseif($hostSdk){'1.4.1'}elseif($Product-eq'Host'){'1.2.2'}else{'1.3.0'}
+ $ass=if($profile-eq'GraphicsCurrent'){'1.4.5'}elseif($hostSdk){'1.4.1'}elseif($Product-eq'Host'){'1.2.2'}else{'1.3.0'}
  $dll=Join-Path $Graphics 'bin\ass_graphics_lib.dll';$symbols=Join-Path $Graphics 'symbols\ass_graphics_lib.pdb';$licenses=Join-Path $Graphics 'licenses'
  if(Test-Path -LiteralPath (Join-Path $Graphics 'reconstruction.json')){
   if($Product-ne'Host'){throw 'ASS reconstruction is only qualified for Host'}

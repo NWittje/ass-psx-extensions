@@ -4,6 +4,7 @@
 #include <bcrypt.h>
 #include <normApi.h>
 #include <psx/sync/transport.hpp>
+#include <psx/windows/runtime_dependency.hpp>
 #include <psx/sync/mailbox.hpp>
 #include <psx/aircraft_sync/protocol.hpp>
 #include <psx/status/protocol.hpp>
@@ -32,7 +33,7 @@ char* allocate_receive(std::size_t n){if(!n||n>max_object)return nullptr;for(aut
 void free_receive(char* p){if(!p)return;for(auto& slot:receive_slots)if(slot.bytes.data()==p){slot.used.store(false,std::memory_order_release);return;}}
 std::uint64_t nonce(){std::uint64_t n{};do{if(BCryptGenRandom(nullptr,reinterpret_cast<PUCHAR>(&n),sizeof(n),BCRYPT_USE_SYSTEM_PREFERRED_RNG))throw std::runtime_error("NORM identity generation failed");}while(!n);return n;}
 Identity identity(){FILETIME c{},e{},k{},u{};if(!GetProcessTimes(GetCurrentProcess(),&c,&e,&k,&u))throw std::runtime_error("NORM process identity unavailable");return {nonce(),nonce(),(std::uint64_t(c.dwHighDateTime)<<32)|c.dwLowDateTime,GetCurrentProcessId()};}
-std::wstring adjacent_dll(){HMODULE image{};if(!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,reinterpret_cast<LPCWSTR>(&native_qpc),&image))throw std::runtime_error("NORM image path unavailable");std::array<wchar_t,32768> b{};const auto n=GetModuleFileNameW(image,b.data(),DWORD(b.size()));if(!n||n>=b.size())throw std::runtime_error("NORM image path truncated");std::wstring p(b.data(),n);return p.substr(0,p.find_last_of(L"\\/"))+L"\\Norm.dll";}
+std::wstring default_dll_path(){return psx::windows::runtime_dependency_path(reinterpret_cast<const void*>(&native_qpc),L"Norm.dll").wstring();}
 std::string resolve(const std::string& h,HANDLE stop){
  IN_ADDR numeric{};if(InetPtonA(AF_INET,h.c_str(),&numeric)==1)return h;
  ADDRINFOEXW hints{};hints.ai_family=AF_INET;hints.ai_socktype=SOCK_DGRAM;PADDRINFOEXW list{};
@@ -52,7 +53,7 @@ struct Api {
  FN(ObjectGetSize);FN(ObjectGetType);FN(DataAccessData);FN(DataDetachData);FN(NodeGetAddress);FN(SendCommand);FN(CancelCommand);FN(NodeGetCommand);FN(GetDescriptor);
  FN(SetAllocationFunctions);
 #undef FN
- void load(const std::wstring& p){if(loaded)return;if(dll)FreeLibrary(dll);dll=LoadLibraryExW(p.c_str(),nullptr,LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_SYSTEM32);if(!dll)throw std::runtime_error("App-local Norm.dll or its runtime dependencies unavailable");
+ void load(const std::wstring& p){if(loaded)return;if(dll)FreeLibrary(dll);dll=LoadLibraryExW(p.c_str(),nullptr,LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_SYSTEM32);if(!dll)throw std::runtime_error("Adjacent/parent Norm.dll or its runtime dependencies unavailable");
   // The dynamic adapter must not create static imports of exported constants.
   // Verify this DLL's invalid-handle representation before using null sentinels.
   for(const auto* name:{"NORM_INSTANCE_INVALID","NORM_SESSION_INVALID","NORM_OBJECT_INVALID"}){const auto* value=reinterpret_cast<const void* const*>(GetProcAddress(dll,name));if(!value||*value)throw std::runtime_error("Unsupported NORM invalid-handle representation");}
@@ -320,7 +321,7 @@ struct Endpoint::Impl {
  }
  void run(){WSADATA winsock{};bool ws=false;try{
   if(WSAStartup(MAKEWORD(2,2),&winsock))throw std::runtime_error("Winsock initialization failed");ws=true;
-  api.load(options.dll_path.empty()?adjacent_dll():options.dll_path);instance=api.CreateInstance(false);if(instance==nullptr)throw std::runtime_error("NORM instance creation failed");
+  api.load(options.dll_path.empty()?default_dll_path():options.dll_path);instance=api.CreateInstance(false);if(instance==nullptr)throw std::runtime_error("NORM instance creation failed");
   api.SetAllocationFunctions(instance,allocate_receive,free_receive);
   for(unsigned i=0;i<8;++i){auto& r=rx[i];r=api.CreateSession(instance,"127.0.0.1",std::uint16_t(options.receive_port+i),node_id(i));if(r==nullptr)throw std::runtime_error("NORM receiver session creation failed");api.SetRxPortReuse(r,false,nullptr,nullptr,0);api.SetDefaultUnicastNack(r,true);api.SetDefaultSyncPolicy(r,NORM_SYNC_CURRENT);api.SetRxCacheLimit(r,32);if(!api.StartReceiver(r,512*1024))throw std::runtime_error("NORM receive ports unavailable");if(options.fixture_loss_percent)api.SetRxLoss(r,options.fixture_loss_percent);}
   {std::lock_guard lock(mutex);recreate_native=false;view.running=true;view.error=0;view.failure={};}

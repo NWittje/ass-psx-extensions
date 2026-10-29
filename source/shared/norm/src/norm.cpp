@@ -1,4 +1,5 @@
 #include <psx/norm/norm.hpp>
+#include <psx/windows/runtime_dependency.hpp>
 #include <psx/norm/du.hpp>
 #include "norm_memory.hpp"
 #include <atomic>
@@ -65,14 +66,9 @@ void free_payload(char *p)
 } // namespace detail
 namespace
 {
-std::wstring sibling()
+std::wstring default_dll_path()
 {
-    std::wstring p(32768, L'\0');
-    auto n = GetModuleFileNameW(nullptr, p.data(), DWORD(p.size()));
-    if (!n || n >= p.size())
-        throw std::runtime_error("Cannot locate executable");
-    p.resize(n);
-    return (std::filesystem::path(p).parent_path() / L"Norm.dll").wstring();
+    return psx::windows::runtime_dependency_path(reinterpret_cast<const void*>(&default_dll_path), L"Norm.dll").wstring();
 }
 // Matching uses current IPv4/interface identity. The immutable vendor DLL only
 // accepts its current short ANSI alias at this API boundary; never persist it.
@@ -180,12 +176,12 @@ struct Adapter::Impl
         options = o;
         sender = send;
         stats = {};
-        auto path = o.dll_path.empty() ? sibling() : o.dll_path;
+        auto path = o.dll_path.empty() ? default_dll_path() : o.dll_path;
         if (!std::filesystem::path(path).is_absolute())
             throw std::runtime_error("NORM path must be absolute");
         dll = LoadLibraryExW(path.c_str(), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
         if (!dll)
-            throw std::runtime_error("Cannot load adjacent/explicit Norm.dll: " + std::to_string(GetLastError()));
+            throw std::runtime_error("Cannot load adjacent, parent or explicit Norm.dll: " + std::to_string(GetLastError()));
 #define LOAD(name) load(name, "Norm" #name)
         LOAD(GetVersion);
         LOAD(CreateInstance);

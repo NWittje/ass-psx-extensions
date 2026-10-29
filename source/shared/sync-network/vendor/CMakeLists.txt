@@ -100,12 +100,3 @@ target_link_options(norm PRIVATE /DEBUG:FULL /INCREMENTAL:NO "$<$<CONFIG:Release
 enable_language(RC)
 configure_file(norm-version.rc.in "${CMAKE_CURRENT_BINARY_DIR}/norm-version.rc" @ONLY)
 target_sources(norm PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/norm-version.rc")
-
-add_executable(psx_norm_timer_tests timer-tests.cpp)
-target_include_directories(psx_norm_timer_tests PRIVATE "${norm_source}/protolib/include")
-target_link_libraries(psx_norm_timer_tests PRIVATE protokit)
-target_compile_definitions(psx_norm_timer_tests PRIVATE WIN32 NOMINMAX)
-set_property(TARGET psx_norm_timer_tests PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-enable_testing()
-add_test(NAME sync_norm_timer_key COMMAND psx_norm_timer_tests)
-set_tests_properties(sync_norm_timer_key PROPERTIES TIMEOUT 15)

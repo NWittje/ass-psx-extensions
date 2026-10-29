@@ -1,20 +1,24 @@
 param([Parameter(Mandatory)][string]$CommonPublisher)
 $script:iosCommonPublisher=[IO.Path]::GetFullPath($CommonPublisher)
-# Reviewed 2026-10-28: all 13 imported transaction functions match the observed
-# starting publisher; the Release-only guard is outside them. The prior adapter
-# pin was already stale. This exact edition passed the publication entry and
-# rollback fixtures; retain its guard throughout publication.
-$script:iosCommonHash='4F9D501BE69E2D86465A0E7EA4194150E0867B6E270C351B1C97B227ABCA557A'
-if((Get-FileHash -LiteralPath $script:iosCommonPublisher -Algorithm SHA256).Hash-ne$script:iosCommonHash){throw 'Common publication contract differs from the qualified edition.'}
+# Bind the imported transaction API. Other modules may evolve the builder's
+# main metadata independently; retain its observed whole-file preimage during
+# each actual namespace commit.
+$script:iosCommonHash=(Get-FileHash -LiteralPath $script:iosCommonPublisher -Algorithm SHA256).Hash
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile($script:iosCommonPublisher,[ref]$tokens,[ref]$errors)
 if($errors.Count){throw 'Common publication contract does not parse.'}
 $functions=@('Get-PublicationInventory','Assert-PublicationInventory','Assert-PublicationSources','Move-PublicationDirectory','Get-PublicationNamespaceState','Assert-PublicationNamespaceState','New-PublicationAuthority','Get-PublicationProcesses','Assert-PublicationProductIdle','Assert-PublicationAuthority','Invoke-PublicationAuthority','Assert-PublicationRoles','Commit-Publication')
+$contractParts=[Collections.Generic.List[string]]::new()
 foreach($name in $functions){
  $definitions=$ast.FindAll({param($node)$node-is[Management.Automation.Language.FunctionDefinitionAst]-and$node.Name-eq$name},$true)
  if($definitions.Count-ne1){throw "Common publication function is missing or ambiguous: $name"}
+ $contractParts.Add($definitions[0].Extent.Text.Replace("`r`n","`n"))
  . ([scriptblock]::Create($definitions[0].Extent.Text))
 }
+$algorithm=[Security.Cryptography.SHA256]::Create()
+try{$contractHash=[BitConverter]::ToString($algorithm.ComputeHash([Text.Encoding]::UTF8.GetBytes(($contractParts-join"`n`n")))).Replace('-','')}
+finally{$algorithm.Dispose()}
+if($contractHash-cne'10A81C7E741CFEA6B9367519D2DE184FA405A907E25B7BEFB05F3A3E895CBC4D'){throw 'Imported publication transaction API differs from the qualified edition.'}
 function FileHash([string]$Path){(Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash}
 function Write-PublicationWarning([string]$Text){Write-Warning $Text}
 function Invoke-IosCatalogStep([scriptblock]$Action){
