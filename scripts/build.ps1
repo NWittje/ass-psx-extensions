@@ -66,7 +66,7 @@ try {
         switch($product) {
             Plugin { $arguments += @('-DPSX_XPLANE_PUBLISH_BINARIES=OFF',"-DXPLANE_SDK_ROOT=$XPlaneSdkRoot") }
             Coordinator { $arguments += @('-DCOORDINATOR_PUBLISH_BINARIES=OFF',"-DCOORDINATOR_TRAFFIC_SDK_ROOT=$XPlaneSdkRoot"); if($GraphicsSdkRoot) { $arguments += "-DASS_GRAPHICS_SDK_ROOT=$GraphicsSdkRoot" } }
-            Exporter { $arguments += '-DPSX_EXPORTER_PUBLISH=OFF'; if($JavaHome) { $arguments += "-DPSX_EXPORTER_JAVA_HOME=$JavaHome" }; if($PsxJar) { $arguments += "-DPSX_EXPORTER_TEST_PSX_JAR=$PsxJar" } }
+            Exporter { $arguments += @('-DPSX_EXPORTER_PUBLISH=OFF',"-DPSX_EXPORTER_TEST_TEMPORARY_ROOT=$work/t"); if($JavaHome) { $arguments += "-DPSX_EXPORTER_JAVA_HOME=$JavaHome" }; if($PsxJar) { $arguments += "-DPSX_EXPORTER_TEST_PSX_JAR=$PsxJar" } }
             HWIO { $arguments += '-DHWIO_PUBLISH_BINARIES=OFF'; if($GraphicsSdkRoot) { $arguments += "-DASS_GRAPHICS_SDK_ROOT=$GraphicsSdkRoot" } }
         }
         & cmake @arguments
