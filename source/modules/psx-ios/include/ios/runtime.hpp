@@ -3,6 +3,7 @@
 #include "airport.hpp"
 #include "situations.hpp"
 #include "terrain_preflight.hpp"
+#include "xplane_health.hpp"
 #include <condition_variable>
 #include <filesystem>
 #include <mutex>
@@ -44,6 +45,7 @@ class Runtime {
   std::map<std::string, Profile> profiles_;
   Engine engine_;
   TerrainPreflight terrain_;
+  XplaneHealth xplane_health_;
   Situations situations_;
   bool ending_{};
   std::uint64_t config_revision_{1}, persist_revision_{}, saved_revision_{};
@@ -106,6 +108,7 @@ public:
   WebStatus web_status() const;
   std::string status() const;
   std::string status_controls() const;
+  std::string xplane_status() const { return xplane_health_.snapshot(); }
   std::string status_summary(std::string_view airport = {}, std::string_view runway = {}) const;
   std::string operation(std::uint64_t) const;
   std::uint64_t submit(std::string, bool, std::uint64_t, std::string);

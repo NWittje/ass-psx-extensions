@@ -91,6 +91,7 @@ int request(mg_connection *c) {
     if (method == "GET") {
       if(route=="/api/v1/situations")return reply(c,200,site.runtime.situation_catalogue());
       if(route=="/api/v1/status/controls")return reply(c,200,site.runtime.status_controls());
+      if(route=="/api/v1/status/xplane")return reply(c,200,site.runtime.xplane_status());
       if(route=="/api/v1/status/summary")return reply(c,200,site.runtime.status_summary());
       if(route=="/api/v1/hwio/actuators")return reply(c,200,site.runtime.actuator_status());
       if(route=="/api/v1/hwio/motors")return reply(c,200,site.runtime.motor_status());
