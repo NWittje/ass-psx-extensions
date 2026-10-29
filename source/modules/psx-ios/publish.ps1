@@ -275,7 +275,7 @@ try{
     if(-not $before.ContainsKey('settings.cfg')){WriteText (Join-Path $stage 'settings.cfg') "schema=2`npsx=127.0.0.1`nmain_port=10747`nweb_port=8090`nadapter_guid=`nconfirmation=1`ndatabase_folder=`n"}
     if(-not $before.ContainsKey('clients.cfg')){WriteText (Join-Path $stage 'clients.cfg') "schema=3`n"}
     foreach($transfer in $transfers){foreach($source in $transfer.sources){if(-not (EqualIdentity $source (Identity $source.path))){throw 'Producer source changed before publication'}}}
-    $payload=@($immutable|Sort-Object|ForEach-Object{$identity=Identity (Join-Path $stage $_);$identity.path=Join-Path $destination $_;$identity})
+    $payload=@($immutable|Sort-Object|ForEach-Object{$identity=Identity (Join-Path $stage $_);$identity.relative=$_.Replace('\','/');$identity.path=Join-Path $destination $_;$identity})
     $sources=@(Get-ChildItem -LiteralPath $PSScriptRoot -File -Recurse|Where-Object{$_.FullName -notmatch '\\(build|evidence)\\|\\vendor\\ass(?:-[^\\]+)?\\'}|Sort-Object FullName|ForEach-Object{Identity $_.FullName})
     foreach($art in @('747-400-top-front.svg','744_sideview_facing_right.svg','738_sideview_facing_left.svg','738_sideview_facing_right.svg')){$sources+=Identity (Join-Path $sourceRoot ('external/'+$art))}
     $sources+=@(Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'shared/psx-instructor') -File -Recurse|Sort-Object FullName|ForEach-Object{Identity $_.FullName})
