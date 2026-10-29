@@ -99,7 +99,23 @@ existing calibrated or edited definitions with these factory copies.
 """
 
 
-def make_plan(binary_root, sdk, source, work):
+# Explicit product scope keeps a newly added bench application out of a public
+# operational release until its intended role has been reviewed.
+OPERATIONAL_PRODUCTS = frozenset((
+    "psx-cdu-client", "psx-du-client", "psx-du-host", "psx-exporter",
+    "psx-hwio", "psx-ios", "psx-trim-display", "psx-xp-coordinator",
+    "psx-xpl-watchdog", "X-Plane",
+))
+BENCH_PRODUCTS = frozenset(("fds-at-test", "fds-trace", "psx-reposition-test", "psx-trim-test"))
+OPERATIONAL_OMISSIONS = {
+    "psx-hwio": frozenset(("hwio-fds-replay.exe", "hwio-fds-replay.pdb")),
+    "psx-xp-coordinator": frozenset(("psx-observation-replay.exe", "psx-observation-replay.pdb")),
+}
+
+
+def make_plan(binary_root, sdk, source, work, profile="all"):
+    if profile not in ("all", "operational"):
+        raise ValueError("Unknown release preparation profile")
     if not binary_root.is_dir() or not sdk.is_dir() or work.exists():
         raise ValueError("Existing Release/SDK inputs and a fresh payload directory are required")
     work.mkdir(parents=True)
@@ -124,6 +140,10 @@ def make_plan(binary_root, sdk, source, work):
         if not directory.is_dir() or directory.name in ("psx-hwio-share", "licenses"):
             continue  # Same HWIO runtime; this local installation owns separate settings.
         product = directory.name
+        if profile == "operational" and product not in OPERATIONAL_PRODUCTS:
+            if product not in BENCH_PRODUCTS:
+                raise ValueError(f"Unclassified operational release product: {product}")
+            continue
         manifests = [p for p in directory.iterdir() if p.name.lower() in ("manifest.json", "package-manifest.json")]
         if len(manifests) != 1:
             raise ValueError(f"One qualified runtime manifest required: {product}")
@@ -157,6 +177,8 @@ def make_plan(binary_root, sdk, source, work):
             relative = file.relative_to(directory).as_posix()
             lower = relative.lower()
             leaf = file.name.lower()
+            if profile == "operational" and leaf in OPERATIONAL_OMISSIONS.get(product, ()):
+                continue
             if leaf in ("manifest.json", "package-manifest.json", "readme.txt", "readme.md", "place_norm_and_b612_here.txt"):
                 continue
             if leaf in ("norm.dll", "norm.pdb", "ass_graphics_lib.dll", "ass_graphics_lib.pdb"):
@@ -247,6 +269,19 @@ def make_plan(binary_root, sdk, source, work):
             raise ValueError(f"One operating guide required: {product}")
         original = old_guides[0].read_text(encoding="utf-8-sig")
         paragraphs = re.split(r"\r?\n\s*\r?\n", original)
+        if profile == "operational":
+            operating = []
+            for paragraph in paragraphs:
+                if "psx-observation-replay.exe" in paragraph:
+                    # This helper is called by the application's diagnostics
+                    # UI; it is an operating dependency, unlike offline replay.
+                    paragraph = ("psx-diagnostics-setup.exe is the coordinator's explicit Windows "
+                                 "crash-dump policy helper. Normal coordinator instances use one stable "
+                                 "Windows-session identity; existing sessions are never terminated.")
+                if any(name in paragraph for name in OPERATIONAL_OMISSIONS.get(product, ())):
+                    continue
+                operating.append(paragraph)
+            paragraphs = operating
         operation = "\n\n".join(p for p in paragraphs if not re.search(r"(?i)ass[ -]?graphics|B612|Norm\.dll|current package:", p))
         guide.write_text(f"{product} — Release\n\n{DEPENDENCIES}\nModule operation\n\n{operation}\n", encoding="utf-8")
         payload.append(row(guide, "README.txt"))
@@ -276,7 +311,9 @@ def make_plan(binary_root, sdk, source, work):
     groups.append(dict(product="ass-graphics-lib", files=shared, imports=[],
                        graphics=sdk_manifest["version"], version=sdk_manifest["version"],
                        externalDependencies=["B612-Regular.ttf", "B612-Bold.ttf"], platform="windows-x64"))
-    return dict(schema=1, configuration="Release", graphics=sdk_manifest["version"],
+    if profile == "operational" and {g["product"] for g in groups} != OPERATIONAL_PRODUCTS | {"ass-graphics-lib"}:
+        raise ValueError("Operational release is missing a current product")
+    return dict(schema=1, configuration="Release", profile=profile, graphics=sdk_manifest["version"],
                 producerManifestSHA256=sha(manifest_path), groups=groups,
                 limits="Static PE/PDB/data closure; NORM/fonts supplied separately; no simulator or physical acceptance.")
 
@@ -285,6 +322,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("binary-root", "sdk", "source", "work", "output"):
         parser.add_argument("--" + name, required=True, type=Path)
+    parser.add_argument("--profile", choices=("all", "operational"), default="all")
     args = parser.parse_args()
-    result = make_plan(args.binary_root, args.sdk, args.source, args.work)
+    result = make_plan(args.binary_root, args.sdk, args.source, args.work, args.profile)
     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
