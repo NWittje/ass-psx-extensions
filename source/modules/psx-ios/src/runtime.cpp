@@ -56,7 +56,8 @@ void validate(const Config &c) {
   if (c.database.size() > 256 || c.database.find_first_of("\r\n\t=") != std::string::npos)
     throw std::invalid_argument("Invalid database folder");
 }
-psx::network::Adapter source(const Config &c,
+} // namespace
+psx::network::Adapter main_adapter(const Config &c,
                              const psx::network::Inventory &inv) {
   auto remote = psx::network::Endpoint::parse(c.psx, c.main_port);
   auto h = remote.host();
@@ -66,12 +67,13 @@ psx::network::Adapter source(const Config &c,
     a.addresses.push_back(psx::network::Endpoint::parse(h, 0));
     return a;
   }
+  if (c.adapter.empty())
+    return psx::network::route_ipv4(inv, remote);
   for (const auto &a : inv.adapters)
     if (narrow(a.guid) == c.adapter)
       return a;
   return {};
 }
-} // namespace
 Config read_config(const std::filesystem::path &p) {
   Config c;
   auto text = read(p);
@@ -219,25 +221,18 @@ Binding binding(const Config &c, const psx::network::Inventory &inv) {
   Binding b;
   b.port = c.web_port;
   b.addresses = {"127.0.0.1"};
-  if (c.adapter.empty()) {
-    b.notice = "Select cockpit-LAN adapter in Settings";
-    return b;
-  }
+  // Browser listeners are independent of the outgoing PSX adapter. Inventory
+  // contains preferred unicast addresses; down adapters never claim a URL.
   for (const auto &a : inv.adapters)
-    if (narrow(a.guid) == c.adapter) {
-      if (a.up)
-        for (const auto &address : a.addresses) {
-          if (address.address.ss_family == AF_INET)
-            b.addresses.push_back(address.host());
-        }
-      if (b.addresses.size() == 1)
-        b.notice = "Saved LAN adapter disconnected or has no IPv4 address";
-      std::sort(b.addresses.begin(), b.addresses.end());
-      b.addresses.erase(std::unique(b.addresses.begin(), b.addresses.end()),
-                        b.addresses.end());
-      return b;
-    }
-  b.notice = "Saved LAN adapter unavailable; loopback remains available";
+    if (a.up)
+      for (const auto &address : a.addresses)
+        if (address.address.ss_family == AF_INET)
+          b.addresses.push_back(address.host());
+  std::sort(b.addresses.begin(), b.addresses.end());
+  b.addresses.erase(std::unique(b.addresses.begin(), b.addresses.end()),
+                    b.addresses.end());
+  if (b.addresses.size() == 1)
+    b.notice = "No usable LAN IPv4 address; loopback remains available";
   return b;
 }
 Runtime::Runtime(std::filesystem::path p, std::filesystem::path navigation_metadata, std::filesystem::path time_data,std::wstring coordinator_endpoint,std::wstring hwio_endpoint,TerrainPreflight::Check terrain_check)
@@ -822,7 +817,7 @@ void Runtime::network() {
     while(sessions[0].stream.sending() && now()<deadline) { sessions[0].stream.pump(); std::this_thread::sleep_for(std::chrono::milliseconds(5)); }
     environment.disconnected();
   };
-  std::uint64_t seen{};
+  std::uint64_t seen{}, seen_inventory{};
   bool was_enabled{};
   psx::network::Adapter previous;
   Config cfg;
@@ -853,11 +848,19 @@ void Runtime::network() {
       bool enabled = engine_.enabled;
       auto changed = seen != config_revision_ || enabled != was_enabled;
       cfg = config_;
-      try {
-        adapter = source(cfg, inv ? *inv : psx::network::Inventory{});
-      } catch (const std::exception &e) {
-        engine_.lost(0, e.what());
-        engine_.lost(1, e.what());
+      adapter = previous;
+      const auto inventory_revision = inv ? inv->revision : 0;
+      // Route queries occur only on configuration/address/route notifications,
+      // never on every acquisition turn or HTTP request.
+      if (seen != config_revision_ || seen_inventory != inventory_revision) {
+        seen_inventory = inventory_revision;
+        try {
+          adapter = main_adapter(cfg, inv ? *inv : psx::network::Inventory{});
+        } catch (const std::exception &e) {
+          adapter = {};
+          engine_.lost(0, e.what());
+          engine_.lost(1, e.what());
+        }
       }
       changed = changed || !psx::network::same_binding(adapter, previous);
       if (changed) {

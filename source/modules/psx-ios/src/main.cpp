@@ -58,7 +58,7 @@ class Ui {
     inventory_revision_ = inv->revision;
     guids_ = {""};
     std::vector<std::wstring> names{
-        L"Loopback only — select cockpit-LAN adapter"};
+        L"Automatic — Windows IP route"};
     for (const auto &a : inv->adapters) {
       guids_.push_back(ios::narrow(a.guid));
       names.push_back(a.name + (a.up ? L"" : L" (disconnected)"));
@@ -142,7 +142,7 @@ public:
           make(AG_BUTTON, ids[n], captions[n],
                {left[n], 16, left[n] + 128, 52}));
     const wchar_t *fields[]{L"PSX Main IP address", L"Main port", L"Web port",
-                            L"Cockpit-LAN adapter"};
+                            L"PSX adapter (outgoing)"};
     std::array<gfx::Control *, 4> editors{&psx_, &main_port_, &web_port_,
                                           &adapter_};
     for (unsigned n = 0; n < 4; ++n) {

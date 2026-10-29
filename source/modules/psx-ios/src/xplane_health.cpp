@@ -140,7 +140,12 @@ bool XplaneHealthModel::status(std::string_view bytes,std::uint64_t at){try{
   if(identity&&(!same_identity||(effective_generation&&d.source.generation!=effective_generation))){d.completed.clear();d.latest.reset();d.position={};}
   if(identity)d.source=source;
   const bool supported=s.get("log_range").get("supported").yes()&&known(advertised)&&same_source(advertised,d.source);
-  d.supported=supported;d.more=false;
+  d.supported=supported;d.more=supported;
+  // Read history only when its published cursor advances. Older peers without
+  // the optional retained-range tail keep the existing bounded read behaviour.
+  try{if(supported&&s.get("log_range").get("last_sequence").kind==Json::text)
+    d.more=!same_source(d.position,d.source)||d.position.after<s.get("log_range").get("last_sequence").id();}
+  catch(const std::exception&){log_error="Log history tail invalid";}
   if(latest&&identity&&latest_generation==d.source.generation){d.latest=std::move(latest);if(d.supported)d.insert(*d.latest);}
   else if(latest&&identity)log_error="Latest log belongs to an older generation";
   d.sample=std::move(s);d.at=at;d.connected=true;d.api_error.clear();d.log_error=std::move(log_error);return true;
@@ -204,11 +209,13 @@ struct XplaneHealth::Impl {
       const bool received=ok;if(ok)ok=model.status(body,now());if(!ok){model.disconnected(received?"Invalid coordinator status reply":"Status API unavailable (Windows error "+std::to_string(error)+")");client.close();}
       // Drain bounded retained pages, coalescing into five rows. An error ends
       // this turn; a disconnected pipe is retried at the ordinary one-second turn.
-      for(unsigned page=0;ok&&!ending&&model.history_supported()&&page<8;++page){
+      for(unsigned page=0;ok&&!ending&&model.history_supported()&&model.has_more()&&page<8;++page){
         auto position=model.cursor();lock.unlock();ok=client.get_logs(position,32,body,error);lock.lock();
         const bool received_logs=ok;if(ok)ok=model.logs(body);if(!ok){model.log_failure(received_logs?"Invalid coordinator log reply":"Log read unavailable (Windows error "+std::to_string(error)+")");client.close();break;}if(!model.has_more())break;
       }
-      cv.wait_until(lock,start+std::chrono::seconds(1),[&]{return ending;});
+      // Fresh successful reads stay below the existing one-second SDK budget;
+      // unavailable peers retain the ordinary one-second reconnect cadence.
+      cv.wait_until(lock,start+(ok?std::chrono::milliseconds(250):std::chrono::milliseconds(1000)),[&]{return ending;});
     }client.close();
   }
 };

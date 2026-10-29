@@ -34,6 +34,7 @@ struct WebStatus {
   std::string listeners, notice;
 };
 Binding binding(const Config &, const psx::network::Inventory &);
+psx::network::Adapter main_adapter(const Config &, const psx::network::Inventory &);
 class Runtime {
   std::filesystem::path directory_;
   std::filesystem::path time_data_;
@@ -88,7 +89,7 @@ class Runtime {
   std::deque<Preview> previews_;
   std::uint64_t next_preview_{1};
   void mutate_profile(std::string_view, const std::function<void(Profile &)> &);
-  psx::network::AdapterMonitor inventory_;
+  psx::network::AdapterMonitor inventory_{psx::network::InventoryPolicy::display};
   void network();
   void persist();
   void database();
