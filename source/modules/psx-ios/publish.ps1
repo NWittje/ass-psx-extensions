@@ -3,13 +3,16 @@ param([Parameter(Mandatory=$true)][ValidateSet('Debug','Release')][string]$Confi
       [string]$WorkDirectory='',
       [string]$NativeStagingReason='',
       [string]$CommitWorkDirectory='',
+      [switch]$RefreshInternalDebug,
       [string]$AssGraphicsSdkRoot=$env:ASS_GRAPHICS_SDK_ROOT,
       [string]$GraphicsSourceRoot='')
 $ErrorActionPreference='Stop'
-if($Configuration -ne 'Release'){throw 'Project publication is Release-only; Debug remains internal qualification output.'}
+if($Configuration -ne 'Release' -and -not($Configuration -eq 'Debug' -and $RefreshInternalDebug)){throw 'Project publication is Release-only; local Debug refresh requires -RefreshInternalDebug.'}
+if($RefreshInternalDebug -and $Configuration -ne 'Debug'){throw 'Internal Debug refresh requires Debug configuration.'}
 $sourceRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $repo=if((Split-Path -Leaf $sourceRoot) -eq 'source'){Split-Path -Parent $sourceRoot}else{$sourceRoot}
 $destination=Join-Path $repo "bin/$Configuration/psx-ios"
+if($RefreshInternalDebug -and $destination -ine 'P:\development\psx_ios\bin\Debug\psx-ios'){throw 'Internal Debug refresh is restricted to the canonical local Debug package.'}
 $outerContext=$env:PSX_WORK_CLEANUP_PARENT
 . (Join-Path $repo 'scripts/deployment/common.ps1')
 . (Join-Path $PSScriptRoot 'publication.ps1') -CommonPublisher (Join-Path $repo 'scripts/publish-binaries.ps1')
@@ -280,8 +283,7 @@ try{
     foreach($art in @('747-400-top-front.svg','744_sideview_facing_right.svg','738_sideview_facing_left.svg','738_sideview_facing_right.svg')){$sources+=Identity (Join-Path $sourceRoot ('external/'+$art))}
     $sources+=@(Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'shared/psx-instructor') -File -Recurse|Sort-Object FullName|ForEach-Object{Identity $_.FullName})
     $sources+=@(Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'shared/non-normal') -File -Recurse|Sort-Object FullName|ForEach-Object{Identity $_.FullName})
-    foreach($dependency in @('shared/environment','shared/motion','shared/aircraft-state/include','shared/windows-version','shared/hwio/include','shared/situation','shared/scenery-coverage','shared/xplane-health','shared/status','shared/sync-network','shared/bridge-protocol','shared/terrain','shared/aircraft-sync','shared/traffic-visual','shared/concurrency')){$sources+=@(Get-ChildItem -LiteralPath (Join-Path $sourceRoot $dependency) -File -Recurse|Sort-Object FullName|ForEach-Object{Identity $_.FullName})}
-    foreach($entry in @('shared/network-io/src/network.cpp','shared/network-io/include/psx/network/io.hpp')){$sources+=Identity (Join-Path $sourceRoot $entry)}
+    foreach($dependency in @('shared/environment','shared/motion','shared/aircraft-state','shared/windows-version','shared/hwio/include','shared/situation','shared/scenery-coverage','shared/xplane-health','shared/status','shared/sync-network','shared/bridge-protocol','shared/terrain','shared/aircraft-sync','shared/traffic-visual','shared/traffic-source','shared/audio','shared/concurrency','shared/diagnostics/include','shared/network-io','shared/windows-runtime')){$sources+=@(Get-ChildItem -LiteralPath (Join-Path $sourceRoot $dependency) -File -Recurse|Sort-Object FullName|ForEach-Object{Identity $_.FullName})}
     foreach($entry in @('shared/cdu/src/blackout.cpp','shared/cdu/include/psx/cdu/blackout.hpp','shared/cdu/include/psx/cdu/snapshot.hpp','shared/cdu/include/psx/cdu/model.hpp')){$sources+=Identity (Join-Path $sourceRoot $entry)}
     foreach($entry in @('WindowsIcons.cmake','application-icon.rc.in','application-icon.hpp','IOS.ico')){$sources+=Identity (Join-Path $sourceRoot ('shared/windows-icons/'+$entry))}
     $sources+=Identity $cleanupHelper
@@ -302,6 +304,7 @@ try{
     }
     $transport=[ordered]@{policy='P/cloud native default; identified project-local pairs TeraCopy';native_api='System.IO.FileStream';runtime=[Environment]::Version.ToString();explicit_native_reason=$NativeStagingReason;local_tool=$(if(@($transfers|Where-Object{$_.tera_count -gt 0}).Count){Identity $teracopy}else{$null})}
     $manifest=[ordered]@{schema='psx-ios-package-v1';version=$version;configuration=$Configuration;published_utc=[DateTime]::UtcNow.ToString('o');payload=$payload;sources=$sources;mutable_preserved=$before;retired_package_files=$obsolete;predecessor_manifest=$predecessorManifest;relocated_predecessor_payloads=$relocatedPredecessorCount;returned_predecessor=$(if($returnedPredecessor){@{origin=$returnedPredecessor.origin;manifest_sha256=$returnedPredecessor.manifest_sha256;verified=$returnedPredecessor.verified;receipt=$returnReceiptIdentity}}else{$null});ass_version=($graphicsSdk.Version+' ABI1');ass_symbols=$assSymbols;civetweb='Moog source snapshot; header 1.17; local Transfer-Encoding/Content-Length patch retained';scope='IOS only; shared public reposition sender with destination-terrain preflight; no service installation';transfer_tool=$transport;transfers=$transfers}
+    $manifest['distribution']=if($Configuration -eq 'Debug'){'Internal Debug; not a release asset'}else{'Release'}
     WriteText (Join-Path $stage 'manifest.json') ($manifest|ConvertTo-Json -Depth 10)
     # ReplaceFile backup, replacement and destination must share a volume.
     # Stable prepared bytes alone cross to P; lists/results remain in O work.
