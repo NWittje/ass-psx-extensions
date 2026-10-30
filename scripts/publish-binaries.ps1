@@ -7,13 +7,33 @@ param(
     [switch]$FreshDefaults,
     [switch]$CoordinatedPublication,
     [switch]$NativeVerifiedStaging,
+    [switch]$InternalDebugRefresh,
+    [switch]$HwioSharedCopy,
+    [switch]$SharedGraphicsRuntime,
     [string]$ParentCleanupOwner = '',
     [string]$SourceDirectory = '',
     [string]$CleanupProjectRoot = 'O:\psx',
     [string]$CommitWorkDirectory = ''
 )
 $ErrorActionPreference = 'Stop'
-if($Configuration -ne 'Release' -and (-not $BinDirectory -or [IO.Path]::GetFullPath($BinDirectory).TrimEnd('\','/') -ieq 'P:\development\psx_ios\bin')){throw 'Project publication is Release-only; Debug remains internal qualification output.'}
+function Assert-PublicationEdition([string]$Module,[string]$Configuration,[bool]$Canonical,[bool]$ExistingCopy,
+    [bool]$InternalDebugRefresh,[bool]$HwioSharedCopy,[bool]$SharedGraphicsRuntime) {
+    # Retained internal HWIO copies are refreshed only by an explicit caller;
+    # this exception never creates a Debug delivery or another product's copy.
+    if($InternalDebugRefresh-and-not($Module-ceq'HWIO'-and$Configuration-ceq'Debug'-and$Canonical-and$ExistingCopy)){
+        throw 'Internal Debug refresh requires the existing canonical HWIO Debug copy.'
+    }
+    if($HwioSharedCopy-and-not($Module-ceq'HWIO'-and$Configuration-ceq'Release'-and$Canonical-and$ExistingCopy)){
+        throw 'Shared HWIO refresh requires its existing canonical Release copy.'
+    }
+    if($SharedGraphicsRuntime-and$Module-cne'HWIO'){throw 'This shared-runtime selection belongs to HWIO only.'}
+    if($Configuration-cne'Release'-and$Canonical-and-not$InternalDebugRefresh){
+        throw 'Project publication is Release-only; Debug remains internal qualification output.'
+    }
+}
+$canonicalBin=-not$BinDirectory-or[IO.Path]::GetFullPath($BinDirectory).TrimEnd('\','/')-ieq'P:\development\psx_ios\bin'
+$existingCopy=if($InternalDebugRefresh){Test-Path -LiteralPath 'P:\development\psx_ios\bin\Debug\psx-hwio\psx-hwio.exe' -PathType Leaf}elseif($HwioSharedCopy){Test-Path -LiteralPath 'P:\development\psx_ios\bin\Release\psx-hwio-share\psx-hwio.exe' -PathType Leaf}else{$false}
+Assert-PublicationEdition $Module $Configuration $canonicalBin ([bool]$existingCopy) ([bool]$InternalDebugRefresh) ([bool]$HwioSharedCopy) ([bool]$SharedGraphicsRuntime)
 $projectRoot = 'P:\development\psx_ios'
 $buildRoot = (Resolve-Path -LiteralPath $BuildDirectory).Path
 if(-not $SourceDirectory){
@@ -557,7 +577,7 @@ function RuntimeSource([string]$name) {
 }
 $configRoot = Join-Path $binRoot $Configuration
 $product = if($Module -eq 'Plugin') {'X-Plane'} elseif($Module -eq 'Exporter') {'psx-exporter'} elseif($Module -eq 'HWIO') {'psx-hwio'} elseif($Module -eq 'Reposition') {'psx-reposition-test'} else {'psx-xp-coordinator'}
-$target = Join-Path $configRoot $product
+$target = Join-Path $configRoot $(if($HwioSharedCopy){'psx-hwio-share'}else{$product})
 $stage = Join-Path $publicationWork 'stage'
 $backup = Join-Path $publicationWork 'previous'
 $rejected = Join-Path $publicationWork 'rejected'
@@ -786,11 +806,28 @@ try {
         $graphicsDetails=[Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $stage 'ass_graphics_lib.dll'))
         if($graphicsDetails.ProductName -cne 'ASS Graphics Lib'){throw 'Graphics ProductName must be ASS Graphics Lib'}
     }
+    if($SharedGraphicsRuntime){
+        if(-not(Test-Path -LiteralPath (Join-Path $sourceRoot 'shared/windows-runtime/graphics_delay_load.cpp'))){throw 'Shared graphics requires its production resolver.'}
+        # Inspect with the SDK DLL present, then remove only those two staged
+        # dependency copies from the candidate. The validated shared parent is
+        # a read-only publication input, never another task's output target.
+        $dependencyWork=Join-Path $publicationWork 'validated-dependencies'
+        [IO.Directory]::CreateDirectory($dependencyWork)|Out-Null
+        foreach($name in 'ass_graphics_lib.dll','ass_graphics_lib.pdb'){
+            $local=Join-Path $stage $name;$parent=Join-Path $configRoot $name
+            $pin=Get-Item -LiteralPath $local
+            $hash=FileHash $local
+            if(-not(Test-Path -LiteralPath $parent -PathType Leaf)-or(Get-Item -LiteralPath $parent).Length-ne$pin.Length-or(FileHash $parent)-cne$hash){throw "Shared graphics parent differs: $parent"}
+            $script:publicationSources.Add([pscustomobject]@{Source=$parent;Bytes=$pin.Length;SHA256=$hash})
+            [IO.File]::Move($local,(Join-Path $dependencyWork $name))
+        }
+        foreach($dependency in $imports){if($dependency.Dll-ieq'ass_graphics_lib.dll'){$dependency.Resolution='Qualified shared parent'}}
+    }
     AssertRuntimePackageLayout -Directory $stage -Product $product
     $files = @(Get-ChildItem -LiteralPath $stage -File -Recurse | ForEach-Object {
         [ordered]@{Path=$_.FullName.Substring($stage.Length+1);Bytes=$_.Length;SHA256=(FileHash $_.FullName);Source=$origins[$_.FullName]}
     })
-    $manifest = [ordered]@{Product=$Module;Configuration=$Configuration;PublishedUtc=[DateTime]::UtcNow.ToString('o');BuildDirectory=$buildRoot;Toolset=$toolVersion;Tests='Build publication is not a test-pass certificate; see build/test reports.';RuntimeLayout=$(if($Module-in'Plugin','Coordinator','Watchdog'-and(Test-Path -LiteralPath (Join-Path $sourceRoot 'shared/windows-runtime/include/psx/windows/runtime_dependency.hpp'))){'adjacent-or-parent-v1'}else{'app-local-v1'});Files=$files;Dependencies=@($imports.ToArray())}
+    $manifest = [ordered]@{Product=$Module;Configuration=$Configuration;PublishedUtc=[DateTime]::UtcNow.ToString('o');BuildDirectory=$buildRoot;Toolset=$toolVersion;Tests='Build publication is not a test-pass certificate; see build/test reports.';RuntimeLayout=$(if($SharedGraphicsRuntime-or($Module-in'Plugin','Coordinator','Watchdog'-and(Test-Path -LiteralPath (Join-Path $sourceRoot 'shared/windows-runtime/include/psx/windows/runtime_dependency.hpp')))){'adjacent-or-parent-v1'}else{'app-local-v1'});Files=$files;Dependencies=@($imports.ToArray())}
     [IO.File]::WriteAllText((Join-Path $stage 'package-manifest.json'),($manifest | ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))
     # Ordinary replacement retains settings. A requested clean delivery seeds
     # current defaults instead, without importing an earlier operator profile.

@@ -7,7 +7,6 @@
 #include <chrono>
 #include <cwctype>
 #include <iomanip>
-#include <optional>
 
 namespace hwio {
 namespace {
@@ -420,10 +419,6 @@ void ButtonPanel::build(bool preserve_scroll) {
 }
 void ButtonPanel::bind_row(std::size_t slot, std::size_t entry_index) {
     auto &row = rows_[slot];
-    // MoveWindow(TRUE) can paint an individual child even while its panel is
-    // batched. Keep the reused row's controls quiet until the row is complete.
-    std::array<std::optional<ass::graphics::Control::UpdateScope>,8> updates;
-    for(std::size_t f=0;f<updates.size();++f)updates[f].emplace(control(row.fields[f]));
     const auto &e = entries_[entry_index];
     const bool different = row.key != e.key;
     if (different) {
@@ -437,8 +432,14 @@ void ButtonPanel::bind_row(std::size_t slot, std::size_t entry_index) {
     row.key = e.key;
     row.action = e.action;
     row.y = e.y;
+    const ag_rect frame_bounds{0,float(e.y),float(width_),float(e.y+e.height)};
+    if(!same_bounds(row.frame_bounds,frame_bounds)){
+        control(row.frame).bounds(frame_bounds);row.frame_bounds=frame_bounds;
+    }
+    if(!row.frame_visible){ag_visible(control(row.frame).handle(),1);row.frame_visible=true;}
     std::array<bool, 8> shown{};
     const auto place = [&](int field, int x, int y, int w, int h, const std::wstring &text) {
+        y-=e.y;
         auto handle = row.fields[static_cast<std::size_t>(field)];
         update(handle, text);
         const ag_rect bounds{float(x),float(y),float(x+w),float(y+h)};
@@ -473,7 +474,7 @@ void ButtonPanel::bind_row(std::size_t slot, std::size_t entry_index) {
     // Choice captions are owned by their item lists, never reset during layout.
     for (int field : {3, 4}) {
         const int x = source_x + (field == 4 ? 138 : 0), w = field == 3 ? 132 : number_width();
-        const ag_rect bounds{float(x),float(source_y),float(x+w),float(source_y+24)};
+        const ag_rect bounds{float(x),float(source_y-e.y),float(x+w),float(source_y-e.y+24)};
         auto& prior=row.bounds[static_cast<std::size_t>(field)];
         if(!same_bounds(prior,bounds)){control(row.fields[static_cast<std::size_t>(field)]).bounds(bounds);prior=bounds;}
         shown[static_cast<std::size_t>(field)] = true;
@@ -558,10 +559,16 @@ void ButtonPanel::realize() {
         const auto t = Clock::now();
         const int id = row_base + static_cast<int>(rows_.size()) * stride;
         Row row;
+        // A non-scrolling ASS label hosts one retained row. Its descendants
+        // keep row-local geometry, so scrolling/chapter changes move one HWND.
+        row.frame=add(rows_window_,AG_LABEL,L"",0,0,0,width_,24,500000+static_cast<int>(rows_.size()));
+        SetWindowLongPtrW(row.frame,GWL_STYLE,GetWindowLongPtrW(row.frame,GWL_STYLE)|WS_CLIPCHILDREN);
+        SetWindowLongPtrW(row.frame,GWL_EXSTYLE,GetWindowLongPtrW(row.frame,GWL_EXSTYLE)|WS_EX_CONTROLPARENT);
+        ag_visible(control(row.frame).handle(),0);
         const uint32_t kinds[]{AG_LABEL, AG_CHECKBOX, AG_BUTTON, AG_CHOICE, AG_CHOICE, AG_LABEL, AG_BUTTON, AG_BUTTON};
         for (int f = 0; f < stride; ++f) {
             row.fields[static_cast<std::size_t>(f)] =
-                add(rows_window_, kinds[f], L"", f == 7 ? AG_STYLE_FLAT : 0, 0, 0, 1, 24, id + f);
+                add(row.frame, kinds[f], L"", f == 7 ? AG_STYLE_FLAT : 0, 0, 0, 1, 24, id + f);
             ag_visible(control(row.fields[static_cast<std::size_t>(f)]).handle(), 0);
             // Allocate bounded tooltip resources during hidden preparation, not first chapter navigation.
             ag_tooltip_set(control(row.fields[static_cast<std::size_t>(f)]).handle(), L"Assignment details");
@@ -576,10 +583,17 @@ void ButtonPanel::realize() {
         ag_choice_replace(control(row.fields[4]).handle(), &empty, 1, 0);
         row.binding_key = L"-1:" + std::to_wstring(inventory_revision_);
         rows_.push_back(std::move(row));
-        timings_.created += stride;
+        timings_.created += stride+1;
         timings_.controls_ms += elapsed(t);
     }
+    // Keep every rebound child batched until the entire viewport is ready.
+    // Ending one row early lets later MoveWindow(TRUE) calls repaint its
+    // neighbouring HWNDs while the remaining rows still have old geometry.
+    std::vector<ass::graphics::Control::UpdateScope> child_updates;
+    child_updates.reserve(wanted.size() * (stride+1));
     std::vector<bool> used(rows_.size());
+    std::vector<std::pair<std::size_t,std::size_t>> bindings;
+    bindings.reserve(wanted.size());
     for (const auto i : wanted) {
         auto slot = rows_.size();
         for (std::size_t j = 0; j < rows_.size(); ++j)
@@ -599,17 +613,26 @@ void ButtonPanel::realize() {
         used[slot] = true;
         if (rows_[slot].entry != static_cast<int>(i) || rows_[slot].key != entries_[i].key ||
             rows_[slot].bound_revision != model_revision_)
-            bind_row(slot, i);
+            bindings.emplace_back(slot,i);
         // The native viewport already translates retained child windows when
         // scrolling. An unchanged logical row needs no second MoveWindow.
     }
+    // Begin every changed row before moving the first child: otherwise that
+    // MoveWindow can synchronously repaint a later, not-yet-batched sibling.
+    for(const auto& [slot,index]:bindings) {
+        (void)index;
+        child_updates.emplace_back(control(rows_[slot].frame));
+        for(auto h:rows_[slot].fields)child_updates.emplace_back(control(h));
+    }
+    for(const auto& [slot,index]:bindings)bind_row(slot,index);
     for (std::size_t j = 0; j < rows_.size(); ++j)
         if (!used[j]) {
-            for (std::size_t f=0;f<rows_[j].fields.size();++f)
-                if(rows_[j].shown[f])ag_visible(control(rows_[j].fields[f]).handle(),0);
-            rows_[j].shown.fill(false);
+            if(rows_[j].frame_visible)ag_visible(control(rows_[j].frame).handle(),0);
+            rows_[j].frame_visible=false;
             rows_[j].entry = -1;
         }
+    for (auto child=child_updates.rbegin();child!=child_updates.rend();++child)
+        child->finish();
     update.finish();
     realized_revision_ = model_revision_;
     realized_scroll_ = scroll_;
@@ -887,7 +910,7 @@ void ButtonPanel::command(int id, int notification) {
     auto &config = configuration_.rows[a.id];
     if (field == 1 && notification == BN_CLICKED) {
         button_toggle(configuration_, a.group,
-                      (selection_override_ >= 0 ? selection_override_ : selected(GetDlgItem(rows_window_, id))) != 0);
+                      (selection_override_ >= 0 ? selection_override_ : selected(row.fields[static_cast<std::size_t>(field)])) != 0);
         save();
         return;
     }
@@ -902,7 +925,7 @@ void ButtonPanel::command(int id, int notification) {
             }
     }
     if (field == 3 && notification == CBN_SELCHANGE) {
-        const int choice = selection_override_ >= 0 ? selection_override_ : selected(GetDlgItem(rows_window_, id));
+        const int choice = selection_override_ >= 0 ? selection_override_ : selected(row.fields[static_cast<std::size_t>(field)]);
         if (choice == 0) {
             config.draft = {};
             config.managed = true;
@@ -921,7 +944,7 @@ void ButtonPanel::command(int id, int notification) {
         }
     }
     if (field == 4 && notification == CBN_SELCHANGE && row.device >= 0) {
-        const int choice = selection_override_ >= 0 ? selection_override_ : selected(GetDlgItem(rows_window_, id));
+        const int choice = selection_override_ >= 0 ? selection_override_ : selected(row.fields[static_cast<std::size_t>(field)]);
         if (choice == 0) {
             config.draft = {};
             config.managed = true;

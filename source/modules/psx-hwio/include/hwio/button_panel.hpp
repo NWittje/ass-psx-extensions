@@ -19,6 +19,9 @@ class ButtonPanel {
         std::array<HWND, 8> fields{};
         std::array<ag_rect, 8> bounds{};
         std::array<bool, 8> shown{};
+        HWND frame{};
+        ag_rect frame_bounds{};
+        bool frame_visible{};
         std::wstring key, binding_key, tip;
         std::vector<std::size_t> controls;
         HWND li{}, readout{};
