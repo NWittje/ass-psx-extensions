@@ -6,7 +6,7 @@ $graphicsSdk=Resolve-IosGraphicsSdk $AssGraphicsSdkRoot
 $monitorSdk=Get-IosMonitorSdk $XplMonitorClientRoot
 $sourceRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $repo=if((Split-Path -Leaf $sourceRoot) -eq 'source'){Split-Path -Parent $sourceRoot}else{$sourceRoot}
-$developmentRoot='O:\psx'
+$developmentRoot=$repo
 if($WorkProjectRoot){$developmentRoot=[IO.Path]::GetFullPath($WorkProjectRoot)}
 $cleanupHelper=Join-Path $developmentRoot 'scripts/work-cleanup.ps1'
 . $cleanupHelper -CleanupProjectRoot $developmentRoot

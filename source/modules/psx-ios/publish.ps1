@@ -22,6 +22,7 @@ $BuildDirectory=[IO.Path]::GetFullPath($BuildDirectory)
 . (Join-Path $PSScriptRoot 'graphics-sdk.ps1')
 $graphicsSdk=Get-IosBuildGraphicsSdk $BuildDirectory $AssGraphicsSdkRoot
 . (Join-Path $PSScriptRoot 'monitor-sdk.ps1')
+. (Join-Path $PSScriptRoot 'teracopy.ps1')
 $monitorSdk=Get-IosMonitorSdk $XplMonitorClientRoot
 $monitorCache=[regex]::Match([IO.File]::ReadAllText((Join-Path $BuildDirectory 'CMakeCache.txt')),'(?m)^XPL_MONITOR_CLIENT_ROOT:PATH=([^\r\n]+)')
 if(-not $monitorCache.Success-or[IO.Path]::GetFullPath($monitorCache.Groups[1].Value).TrimEnd('\','/')-ine$monitorSdk.Root){throw 'Monitor SDK differs from native build input.'}
@@ -38,7 +39,7 @@ foreach($native in $nativeSdkFiles){
 }
 if($repo-ieq'P:\development\psx_ios'-and[IO.Path]::GetPathRoot($graphicsSource.Root)-ine'P:\'){throw 'Canonical IOS publication requires the verified durable P graphics source successor.'}
 $work=if($WorkDirectory){[IO.Path]::GetFullPath($WorkDirectory)}else{Join-Path $BuildDirectory ('publication-'+[Guid]::NewGuid().ToString('N'))}
-$developmentRoot='O:\psx'
+$developmentRoot=$repo
 if($WorkProjectRoot){$developmentRoot=[IO.Path]::GetFullPath($WorkProjectRoot)}
 $cleanupHelper=Join-Path $developmentRoot 'scripts/work-cleanup.ps1'
 . $cleanupHelper -CleanupProjectRoot $developmentRoot
@@ -53,7 +54,7 @@ $commitWork=$null
 $commitLease=$null
 $mutable=@('settings.cfg','settings.cfg.bak','clients.cfg','clients.cfg.bak','customer.png','customer.png.bak','fmc-quicksave.psxfmc','fmc-quicksave.psxfmc.bak')
 $teracopy='C:\Program Files\TeraCopy\TeraCopy.exe'
-if($NativeStagingReason){Write-Output "Explicit native staging exception: $NativeStagingReason"}
+if($NativeStagingReason){throw 'Native staging override is superseded; agent-managed transfers require TeraCopy.'}
 $borrowedCleanupParent=$null
 if($env:PSX_WORK_CLEANUP_PARENT){
     # A live enclosing build owns this staging. Invalid context never falls back
@@ -130,115 +131,26 @@ function PreviousPayloadRelative($entry){
     return $relative
 }
 function WriteText([string]$p,[string]$text){[IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($p))|Out-Null;[IO.File]::WriteAllText($p,$text,[Text.UTF8Encoding]::new($false))}
-# Only the documented project roots are identified non-cloud endpoints.
-# Fixed drive letters alone do not establish that a directory is non-cloud.
-function GetIosCopyEndpoint([string]$Path){
-    $absolute=[IO.Path]::GetFullPath($Path)
-    if([IO.Path]::GetPathRoot($absolute) -ieq 'P:\'){return 'Cloud'}
-    foreach($root in @('O:\psx','D:\devel_assist\psx-ios-rebuild-20261008-170322Z\psx_ios')){
-        if($absolute -ieq $root -or $absolute.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase)){
-            $ancestor=$absolute
-            while($ancestor){
-                if(([IO.File]::Exists($ancestor) -or [IO.Directory]::Exists($ancestor)) -and ([IO.File]::GetAttributes($ancestor) -band [IO.FileAttributes]::ReparsePoint)){throw "Copy endpoint traverses an unclassified reparse point: $ancestor"}
-                $ancestor=[IO.Path]::GetDirectoryName($ancestor)
-            }
-            return 'Local'
-        }
-    }
-    return 'Unclassified'
-}
-function GetIosCopyRoute([string]$Source,[string]$Target){
-    $from=GetIosCopyEndpoint $Source;$to=GetIosCopyEndpoint $Target
-    if($from -eq 'Cloud' -or $to -eq 'Cloud'){return 'NativeFileStream'}
-    if($from -eq 'Local' -and $to -eq 'Local'){return 'TeraCopy'}
-    throw "Copy endpoints must be identified before local TeraCopy use: $Source -> $Target"
-}
-function CopyIosNativeVerified($Source,[string]$Target){
-    if(-not (EqualIdentity $Source (Identity $Source.path))){throw 'Native copy source changed before transmission'}
-    if([IO.File]::Exists($Target)){
-        if(-not (EqualIdentity $Source (Identity $Target))){throw 'Preserve-existing native destination differs; it was not overwritten'}
-        if(-not (EqualIdentity $Source (Identity $Source.path))){throw 'Native copy source changed during destination validation'}
-        return $false
-    }
-    # The qualified native stream path preserves fresh-file collision intent.
-    # Flush concerns the local filesystem/provider; remote cloud completion is separate.
-    $inputStream=[IO.File]::OpenRead($Source.path)
-    try{
-        $outputStream=[IO.File]::Open($Target,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
-        try{$inputStream.CopyTo($outputStream);$outputStream.Flush($true)}finally{$outputStream.Dispose()}
-    }finally{$inputStream.Dispose()}
-    if(-not (EqualIdentity $Source (Identity $Target)) -or -not (EqualIdentity $Source (Identity $Source.path))){throw 'Native copy destination/source identity differs'}
-    return $true
-}
 function StageFiles([object[]]$entries,[string]$TargetStage=$stage,[switch]$PreparedCommit){
     $batch=Join-Path $work ('transfer-'+$transfers.Count)
-    [IO.Directory]::CreateDirectory($batch)|Out-Null
     $sources=@($entries|ForEach-Object{Identity $_.source})
-    $names=@($sources|ForEach-Object{[IO.Path]::GetFileName($_.path)})
-    if(@($names|Select-Object -Unique).Count -ne $names.Count){throw 'Duplicate basenames in a transfer batch'}
-    $list=$null
     $incoming=if($PreparedCommit){Join-Path $commitWork 'incoming'}else{Join-Path $batch 'incoming'}
-    [IO.Directory]::CreateDirectory($incoming)|Out-Null
-    $record=[ordered]@{sources=$sources;destination=$incoming;list=$list;collision='SkipAll';verified=0;skipped=0;errors=0;launcher_exit=$null;vendor_counts='not exposed by CLI; independent exact destination verification required'}
+    $record=[ordered]@{sources=$sources;destination=$incoming;collision='SkipAll';verified=0;skipped=0;errors=0;transport='TeraCopy';tera_count=$sources.Count;native_count=0;receipt=$null}
     $transfers.Add($record)
-    $process=$null
     try{
-        $nativeSources=@();$localSources=@()
-        foreach($source in $sources){
-            $route=if($NativeStagingReason){'NativeFileStream'}else{GetIosCopyRoute $source.path $incoming}
-            if($route -eq 'NativeFileStream'){$nativeSources+=@($source)}else{$localSources+=@($source)}
+        $receipt=Invoke-IosTeraCopy -Sources ([string[]]$sources.path) -Destination $incoming -EvidenceDirectory (Join-Path $batch 'evidence')
+        $record.receipt=$receipt;$record.skipped=$receipt.job.skipped
+        for($k=0;$k-lt$sources.Count;++$k){
+            if(-not(EqualIdentity $sources[$k] (Identity $sources[$k].path))){throw 'Producer source changed during transfer'}
+            $target=Join-Path $TargetStage $entries[$k].relative
+            [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($target))|Out-Null
+            # Verified incoming files enter private staging by same-volume rename.
+            [IO.File]::Move((Join-Path $incoming ([IO.Path]::GetFileName($sources[$k].path))),$target)
+            if(-not$PreparedCommit-and$entries[$k].relative-notin$mutable){$immutable.Add($entries[$k].relative)}
+            ++$record.verified
         }
-        $record.native_count=$nativeSources.Count;$record.tera_count=$localSources.Count
-        $record.transport=if($nativeSources.Count -and $localSources.Count){'Mixed'}elseif($nativeSources.Count){'NativeFileStream'}else{'TeraCopy'}
-        $record.native_api='System.IO.FileStream CopyTo/CreateNew/Flush(true)'
-        $record.reason=if($NativeStagingReason){$NativeStagingReason}else{'Default native for P/cloud endpoints; TeraCopy only for identified project-local pairs'}
-        foreach($source in $nativeSources){
-            $target=Join-Path $incoming ([IO.Path]::GetFileName($source.path))
-            if(-not (CopyIosNativeVerified $source $target)){++$record.skipped}
-        }
-        if($localSources.Count){
-            if(-not [IO.File]::Exists($teracopy)){throw 'Identified local transfer requires installed TeraCopy; no automatic native fallback.'}
-            if(@(Get-Process -Name TeraCopy -ErrorAction SilentlyContinue).Count){throw 'TeraCopy is already active; no overlapping transfer was started.'}
-            $list=Join-Path $batch 'sources.txt';$record.list=$list
-            [IO.File]::WriteAllLines($list,[string[]]@($localSources|ForEach-Object{$_.path}),[Text.UTF8Encoding]::new($true))
-            $process=Start-Process -FilePath $teracopy -ArgumentList ('Copy "*'+$list+'" "'+$incoming+'" /SkipAll /Close') -WindowStyle Hidden -PassThru
-            $null=$process.Handle
-            $record.pid=$process.Id
-            $record.started_utc_ticks=$process.StartTime.ToUniversalTime().Ticks.ToString()
-        }
-        $deadline=[DateTime]::UtcNow.AddSeconds(30)
-        do {
-            $valid=$true
-            for($k=0;$k -lt $sources.Count;++$k){
-                $target=Join-Path $incoming $names[$k]
-                try{if(-not [IO.File]::Exists($target) -or -not (EqualIdentity $sources[$k] (Identity $target))){$valid=$false;break}}
-                catch{$valid=$false;break}
-            }
-            $retired=$null -eq $process
-            if($process -and $process.WaitForExit(0)){
-                $record.launcher_exit=$process.ExitCode
-                if($record.launcher_exit -ne 0){throw "TeraCopy exited $($record.launcher_exit); staged files are not admitted."}
-                $retired=@(Get-Process -Name TeraCopy -ErrorAction SilentlyContinue).Count -eq 0
-            }
-            if($valid -and $retired){break}
-            Start-Sleep -Milliseconds 100
-        } while([DateTime]::UtcNow -lt $deadline)
-        if(-not $valid -or -not $retired){throw "Staging identity/transfer retirement not verified within 30 seconds. Sources/staging retained at $work; no retry or source deletion."}
-    if(@(Get-ChildItem -LiteralPath $incoming -File).Count -ne $sources.Count){throw 'Unexpected files in the unique transfer destination'}
-    # Native same-volume atomic renames establish package names after verified staging.
-    # These commit/rollback operations deliberately retain native atomic semantics.
-    for($k=0;$k -lt $sources.Count;++$k){
-        if(-not (EqualIdentity $sources[$k] (Identity $sources[$k].path))){throw 'Producer source changed during transfer'}
-        $target=Join-Path $TargetStage $entries[$k].relative
-        [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($target))|Out-Null
-        [IO.File]::Move((Join-Path $incoming $names[$k]),$target)
-        if(-not $PreparedCommit-and$entries[$k].relative-notin$mutable){$immutable.Add($entries[$k].relative)}
-        ++$record.verified
-    }
     }catch{$record.errors=1;throw}
-    finally{if($process){$process.Dispose();$record.handle_disposed=$true}}
 }
-
 try{
     if($null -eq $borrowedCleanupParent){$cleanupLease=Enter-IosWorkCleanup -WorkDirectory $work -Owner 'ios-6.1';$outerContext=Get-WorkCleanupParentContext -Lease $cleanupLease}
     try{$locked=$mutex.WaitOne(20000)}catch [Threading.AbandonedMutexException]{$locked=$true}
@@ -317,7 +229,7 @@ try{
             }
         }
     }
-    $transport=[ordered]@{policy='P/cloud native default; identified project-local pairs TeraCopy';native_api='System.IO.FileStream';runtime=[Environment]::Version.ToString();explicit_native_reason=$NativeStagingReason;local_tool=$(if(@($transfers|Where-Object{$_.tera_count -gt 0}).Count){Identity $teracopy}else{$null})}
+    $transport=[ordered]@{policy='TeraCopy for agent-managed transfers; native atomic staging/commit/rollback only';tool=(Identity $teracopy);vendor_counts='Read-only completed job database, exact source roster and destination hashes';remote_cloud_completion='Not established by local verification'}
     $manifest=[ordered]@{schema='psx-ios-package-v1';version=$version;configuration=$Configuration;published_utc=[DateTime]::UtcNow.ToString('o');payload=$payload;sources=$sources;mutable_preserved=$before;retired_package_files=$obsolete;predecessor_manifest=$predecessorManifest;relocated_predecessor_payloads=$relocatedPredecessorCount;returned_predecessor=$(if($returnedPredecessor){@{origin=$returnedPredecessor.origin;manifest_sha256=$returnedPredecessor.manifest_sha256;verified=$returnedPredecessor.verified;receipt=$returnReceiptIdentity}}else{$null});ass_version=($graphicsSdk.Version+' ABI1');ass_symbols=$assSymbols;civetweb='Moog source snapshot; header 1.17; local Transfer-Encoding/Content-Length patch retained';scope='IOS only; shared public reposition sender with destination-terrain preflight; no service installation';transfer_tool=$transport;transfers=$transfers}
     $manifest['shared_runtime']=$sharedRuntime
     $manifest['monitor_sdk']=@{version=$monitorSdk.Version;api=1;role='collector';root=$monitorSdk.Root;manifest_sha256=$monitorSdk.ManifestSHA256}
@@ -331,6 +243,7 @@ try{
     $commitWork=Resolve-WorkCleanupPath $commitWork
     if([IO.Directory]::Exists($commitWork) -or [IO.File]::Exists($commitWork)){throw 'Commit staging must be fresh; existing bytes are preserved.'}
     $commitLease=Enter-IosWorkCleanup -WorkDirectory $commitWork -Owner 'ios-6.1'
+    New-Item -ItemType Directory -Path $commitWork|Out-Null
     . $cleanupHelper -CleanupProjectRoot $developmentRoot
     $preparedStage=Join-Path $commitWork 'payload'
     if([IO.Path]::GetPathRoot($destination) -ieq [IO.Path]::GetPathRoot($stage)){
