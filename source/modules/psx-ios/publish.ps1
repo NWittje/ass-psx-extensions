@@ -324,23 +324,28 @@ try{
     $manifest['distribution']=if($Configuration -eq 'Debug'){'Internal Debug; not a release asset'}else{'Release'}
     WriteText (Join-Path $stage 'manifest.json') ($manifest|ConvertTo-Json -Depth 10)
     # ReplaceFile backup, replacement and destination must share a volume.
-    # Stable prepared bytes alone cross to P; lists/results remain in O work.
-    if([IO.Path]::GetPathRoot($destination) -ine [IO.Path]::GetPathRoot($stage)){
-        if($repo -ine 'P:\development\psx_ios'){throw 'Cross-volume commit has no qualified finished-package root.'}
-        $commitWork=if($CommitWorkDirectory){[IO.Path]::GetFullPath($CommitWorkDirectory)}else{Join-Path $repo ('bin/.work/ios-commit-'+[Guid]::NewGuid().ToString('N'))}
-        . $cleanupHelper -CleanupProjectRoot $repo
-        $commitWork=Resolve-WorkCleanupPath $commitWork
-        if([IO.Directory]::Exists($commitWork) -or [IO.File]::Exists($commitWork)){throw 'Commit staging must be fresh; existing bytes are preserved.'}
-        $commitLease=Enter-IosWorkCleanup -WorkDirectory $commitWork -Owner 'ios-6.1'
-        . $cleanupHelper -CleanupProjectRoot $developmentRoot
-        $preparedStage=Join-Path $commitWork 'payload'
+    # A distinct real commit lease is required even when preparation is on P:.
+    if($repo -ine 'P:\development\psx_ios'){throw 'Commit has no qualified finished-package root.'}
+    $commitWork=if($CommitWorkDirectory){[IO.Path]::GetFullPath($CommitWorkDirectory)}else{Join-Path $repo ('bin/.work/ios-commit-'+[Guid]::NewGuid().ToString('N'))}
+    . $cleanupHelper -CleanupProjectRoot $repo
+    $commitWork=Resolve-WorkCleanupPath $commitWork
+    if([IO.Directory]::Exists($commitWork) -or [IO.File]::Exists($commitWork)){throw 'Commit staging must be fresh; existing bytes are preserved.'}
+    $commitLease=Enter-IosWorkCleanup -WorkDirectory $commitWork -Owner 'ios-6.1'
+    . $cleanupHelper -CleanupProjectRoot $developmentRoot
+    $preparedStage=Join-Path $commitWork 'payload'
+    if([IO.Path]::GetPathRoot($destination) -ieq [IO.Path]::GetPathRoot($stage)){
+        $preparedInventory=@(Get-PublicationInventory $stage)
+        Move-PublicationDirectory $stage $preparedStage
+        $stage=$preparedStage
+        Assert-PublicationInventory $stage $preparedInventory
+    }else{
         $prepared=@(Get-ChildItem -LiteralPath $stage -File -Recurse|Sort-Object FullName|ForEach-Object{@{source=$_.FullName;relative=$_.FullName.Substring($stage.Length+1)}})
         StageFiles $prepared -TargetStage $preparedStage -PreparedCommit
-        $stage=$preparedStage
-        $rollback=Join-Path $commitWork 'rollback'
     }
+    $stage=$preparedStage
+    $rollback=Join-Path $commitWork 'rollback'
     if(-not $commitLease){throw 'Canonical directory publication requires its actual same-volume commit lease.'}
-    if(-not $outerContext){throw 'IOS publication requires its actual O issuer context.'}
+    if(-not $outerContext){throw 'IOS publication requires its actual work issuer context.'}
     $scope=[pscustomobject]@{Root=$repo;Work=$commitWork;Lease=$commitLease;Context=$null}
     . $cleanupHelper -CleanupProjectRoot $repo
     $authority=New-PublicationAuthority $scope $mutex $locked $destination $originalTarget @('psx-ios.exe')
