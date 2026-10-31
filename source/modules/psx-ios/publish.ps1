@@ -5,7 +5,9 @@ param([Parameter(Mandatory=$true)][ValidateSet('Debug','Release')][string]$Confi
       [string]$CommitWorkDirectory='',
       [switch]$RefreshInternalDebug,
       [string]$AssGraphicsSdkRoot=$env:ASS_GRAPHICS_SDK_ROOT,
-      [string]$GraphicsSourceRoot='')
+      [string]$GraphicsSourceRoot='',
+      [string]$XplMonitorClientRoot='P:\development\xpl-monitor\sdk\client\1.0.0',
+      [string]$WorkProjectRoot='')
 $ErrorActionPreference='Stop'
 if($Configuration -ne 'Release' -and -not($Configuration -eq 'Debug' -and $RefreshInternalDebug)){throw 'Project publication is Release-only; local Debug refresh requires -RefreshInternalDebug.'}
 if($RefreshInternalDebug -and $Configuration -ne 'Debug'){throw 'Internal Debug refresh requires Debug configuration.'}
@@ -19,6 +21,10 @@ $outerContext=$env:PSX_WORK_CLEANUP_PARENT
 $BuildDirectory=[IO.Path]::GetFullPath($BuildDirectory)
 . (Join-Path $PSScriptRoot 'graphics-sdk.ps1')
 $graphicsSdk=Get-IosBuildGraphicsSdk $BuildDirectory $AssGraphicsSdkRoot
+. (Join-Path $PSScriptRoot 'monitor-sdk.ps1')
+$monitorSdk=Get-IosMonitorSdk $XplMonitorClientRoot
+$monitorCache=[regex]::Match([IO.File]::ReadAllText((Join-Path $BuildDirectory 'CMakeCache.txt')),'(?m)^XPL_MONITOR_CLIENT_ROOT:PATH=([^\r\n]+)')
+if(-not $monitorCache.Success-or[IO.Path]::GetFullPath($monitorCache.Groups[1].Value).TrimEnd('\','/')-ine$monitorSdk.Root){throw 'Monitor SDK differs from native build input.'}
 $graphicsSource=Resolve-IosGraphicsSdk $(if($GraphicsSourceRoot){$GraphicsSourceRoot}else{$graphicsSdk.Root})
 $nativeSdkFiles=@(Get-ChildItem -LiteralPath $graphicsSdk.Root -File -Recurse -Force)
 $sourceSdkFiles=@(Get-ChildItem -LiteralPath $graphicsSource.Root -File -Recurse -Force)
@@ -33,6 +39,7 @@ foreach($native in $nativeSdkFiles){
 if($repo-ieq'P:\development\psx_ios'-and[IO.Path]::GetPathRoot($graphicsSource.Root)-ine'P:\'){throw 'Canonical IOS publication requires the verified durable P graphics source successor.'}
 $work=if($WorkDirectory){[IO.Path]::GetFullPath($WorkDirectory)}else{Join-Path $BuildDirectory ('publication-'+[Guid]::NewGuid().ToString('N'))}
 $developmentRoot='O:\psx'
+if($WorkProjectRoot){$developmentRoot=[IO.Path]::GetFullPath($WorkProjectRoot)}
 $cleanupHelper=Join-Path $developmentRoot 'scripts/work-cleanup.ps1'
 . $cleanupHelper -CleanupProjectRoot $developmentRoot
 $work=Resolve-WorkCleanupPath $work
@@ -264,8 +271,15 @@ try{
     $assSymbols=[ordered]@{source=$symbolSource;dll=$symbolDll;pdb=(Identity $symbolPath);native_sdk_root=$graphicsSdk.Root;source_sdk_root=$graphicsSource.Root;location_successor=$graphicsSuccessor}
     foreach($name in $mutable){$p=Join-Path $destination $name;if([IO.File]::Exists($p)){$before[$name]=Identity $p}}
     [IO.Directory]::CreateDirectory($stage)|Out-Null
-    StageFiles @('psx-ios.exe','psx-ios.pdb','ass_graphics_lib.dll','environment-time.bin'|ForEach-Object{@{source=Join-Path $BuildDirectory "$Configuration/$_";relative=$_}})
-    StageFiles @(@{source=$symbolPath;relative='ass_graphics_lib.pdb'})
+    StageFiles @('psx-ios.exe','psx-ios.pdb','environment-time.bin'|ForEach-Object{@{source=Join-Path $BuildDirectory "$Configuration/$_";relative=$_}})
+    # The configuration parent owns one graphics pair shared by all consumers.
+    $sharedFiles=@()
+    foreach($binding in @(@{name='ass_graphics_lib.dll';identity=$producerDll},@{name='ass_graphics_lib.pdb';identity=(Identity $symbolPath)})){
+        $installed=Join-Path (Split-Path -Parent $destination) $binding.name
+        if(-not [IO.File]::Exists($installed)-or-not (EqualIdentity $binding.identity (Identity $installed))){throw "Install the matching shared graphics dependency before publication: $installed"}
+        $sharedFiles+=Identity $installed
+    }
+    $sharedRuntime=[ordered]@{directory=(Split-Path -Parent $destination);configuration=$Configuration;version='1.4.5 ABI1';files=$sharedFiles}
     StageFiles @(@{source=Join-Path $PSScriptRoot 'vendor/civetweb/LICENSE.md';relative='licenses/CivetWeb-LICENSE.md'},
                  @{source=Join-Path $graphicsSource.Root "$Configuration/licenses/B612-OFL.txt";relative='licenses/B612-OFL.txt'},
                  @{source=Join-Path $graphicsSource.Root "$Configuration/licenses/NOTICE.txt";relative='licenses/NOTICE.txt'})
@@ -283,9 +297,10 @@ try{
     foreach($art in @('747-400-top-front.svg','744_sideview_facing_right.svg','738_sideview_facing_left.svg','738_sideview_facing_right.svg')){$sources+=Identity (Join-Path $sourceRoot ('external/'+$art))}
     $sources+=@(Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'shared/psx-instructor') -File -Recurse|Sort-Object FullName|ForEach-Object{Identity $_.FullName})
     $sources+=@(Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'shared/non-normal') -File -Recurse|Sort-Object FullName|ForEach-Object{Identity $_.FullName})
-    foreach($dependency in @('shared/environment','shared/motion','shared/aircraft-state','shared/windows-version','shared/hwio/include','shared/situation','shared/scenery-coverage','shared/xplane-health','shared/status','shared/sync-network','shared/bridge-protocol','shared/terrain','shared/aircraft-sync','shared/traffic-visual','shared/traffic-source','shared/audio','shared/concurrency','shared/diagnostics/include','shared/network-io','shared/windows-runtime')){$sources+=@(Get-ChildItem -LiteralPath (Join-Path $sourceRoot $dependency) -File -Recurse|Sort-Object FullName|ForEach-Object{Identity $_.FullName})}
+    foreach($dependency in @('shared/environment','shared/motion','shared/aircraft-state','shared/windows-version','shared/hwio/include','shared/situation','shared/scenery-coverage','shared/status','shared/sync-network','shared/bridge-protocol','shared/terrain','shared/aircraft-sync','shared/traffic-visual','shared/traffic-source','shared/audio','shared/concurrency','shared/diagnostics/include','shared/network-io','shared/windows-runtime')){$sources+=@(Get-ChildItem -LiteralPath (Join-Path $sourceRoot $dependency) -File -Recurse|Sort-Object FullName|ForEach-Object{Identity $_.FullName})}
     foreach($entry in @('shared/cdu/src/blackout.cpp','shared/cdu/include/psx/cdu/blackout.hpp','shared/cdu/include/psx/cdu/snapshot.hpp','shared/cdu/include/psx/cdu/model.hpp')){$sources+=Identity (Join-Path $sourceRoot $entry)}
     foreach($entry in @('WindowsIcons.cmake','application-icon.rc.in','application-icon.hpp','IOS.ico')){$sources+=Identity (Join-Path $sourceRoot ('shared/windows-icons/'+$entry))}
+    $sources+=@($monitorSdk.Files)
     $sources+=Identity $cleanupHelper
     $sources+=Identity (Join-Path $repo 'scripts/publish-binaries.ps1')
     $sources+=Identity (Join-Path $repo 'scripts/deployment/common.ps1')
@@ -304,6 +319,8 @@ try{
     }
     $transport=[ordered]@{policy='P/cloud native default; identified project-local pairs TeraCopy';native_api='System.IO.FileStream';runtime=[Environment]::Version.ToString();explicit_native_reason=$NativeStagingReason;local_tool=$(if(@($transfers|Where-Object{$_.tera_count -gt 0}).Count){Identity $teracopy}else{$null})}
     $manifest=[ordered]@{schema='psx-ios-package-v1';version=$version;configuration=$Configuration;published_utc=[DateTime]::UtcNow.ToString('o');payload=$payload;sources=$sources;mutable_preserved=$before;retired_package_files=$obsolete;predecessor_manifest=$predecessorManifest;relocated_predecessor_payloads=$relocatedPredecessorCount;returned_predecessor=$(if($returnedPredecessor){@{origin=$returnedPredecessor.origin;manifest_sha256=$returnedPredecessor.manifest_sha256;verified=$returnedPredecessor.verified;receipt=$returnReceiptIdentity}}else{$null});ass_version=($graphicsSdk.Version+' ABI1');ass_symbols=$assSymbols;civetweb='Moog source snapshot; header 1.17; local Transfer-Encoding/Content-Length patch retained';scope='IOS only; shared public reposition sender with destination-terrain preflight; no service installation';transfer_tool=$transport;transfers=$transfers}
+    $manifest['shared_runtime']=$sharedRuntime
+    $manifest['monitor_sdk']=@{version=$monitorSdk.Version;api=1;role='collector';root=$monitorSdk.Root;manifest_sha256=$monitorSdk.ManifestSHA256}
     $manifest['distribution']=if($Configuration -eq 'Debug'){'Internal Debug; not a release asset'}else{'Release'}
     WriteText (Join-Path $stage 'manifest.json') ($manifest|ConvertTo-Json -Depth 10)
     # ReplaceFile backup, replacement and destination must share a volume.
@@ -330,7 +347,8 @@ try{
     $transactionGuard=New-IosPackageGuard $authority $outerContext $work $cleanupHelper
     $previous=Join-Path $commitWork 'previous';$rejected=Join-Path $commitWork 'rejected'
     $expected=@(Get-PublicationInventory $stage)
-    $inputPins=@($sources|ForEach-Object{@{Source=$_.path;Bytes=$_.bytes;SHA256=$_.sha256}})
+    $inputPins=@($sharedFiles|ForEach-Object{@{Source=$_.path;Bytes=$_.bytes;SHA256=$_.sha256}})
+    $inputPins+=@($sources|ForEach-Object{@{Source=$_.path;Bytes=$_.bytes;SHA256=$_.sha256}})
     $inputPins+=@($transfers|ForEach-Object{$_.sources}|ForEach-Object{@{Source=$_.path;Bytes=$_.bytes;SHA256=$_.sha256}})
     $Module='IOS'
     Commit-Publication $stage $destination $previous $rejected $expected $inputPins $transactionGuard

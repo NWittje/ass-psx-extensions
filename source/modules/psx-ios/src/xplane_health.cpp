@@ -63,18 +63,18 @@ struct Reader {
   }
 };
 Json response(std::string_view bytes,std::string_view operation){
-  if(bytes.size()>psx::health::consumer_reply_limit)Reader::bad();Reader p{bytes};auto root=p.read();p.ws();
-  if(p.at!=bytes.size()||root.get("api_version").real()!=2||!root.get("ok").yes()||root.get("operation").string!=operation||root.get("data").kind!=Json::object)Reader::bad();
+  if(bytes.size()>xpl::monitor::consumer_reply_limit)Reader::bad();Reader p{bytes};auto root=p.read();p.ws();
+  if(p.at!=bytes.size()||root.get("api_version").real()!=xpl::monitor::consumer_version||!root.get("ok").yes()||root.get("operation").string!=operation||root.get("data").kind!=Json::object)Reader::bad();
   return root.get("data");
 }
-psx::health::Process process(const Json& n){
+xpl::monitor::Process process(const Json& n){
   auto p=n.get("pid").real();if(!p||*p<0||*p>UINT32_MAX||std::floor(*p)!=*p)Reader::bad();return {static_cast<std::uint32_t>(*p),n.get("birth_filetime").id()};
 }
-psx::health::LogCursor cursor(const Json& n){
+xpl::monitor::LogCursor cursor(const Json& n){
   auto pid=[&](const char* k){auto v=n.get(k).real();if(!v||*v<0||*v>UINT32_MAX||std::floor(*v)!=*v)Reader::bad();return static_cast<std::uint32_t>(*v);};
   return {{pid("watchdog_pid"),n.get("watchdog_birth").id()},{pid("xplane_pid"),n.get("xplane_birth").id()},n.get("generation").id(),n.get("after").id()};
 }
-bool same_source(const psx::health::LogCursor& a,const psx::health::LogCursor& b){return a.watchdog==b.watchdog&&a.process==b.process&&a.generation==b.generation;}
+bool same_source(const xpl::monitor::LogCursor& a,const xpl::monitor::LogCursor& b){return a.watchdog==b.watchdog&&a.process==b.process&&a.generation==b.generation;}
 std::optional<double> nonnegative(const Json& j){auto n=j.real();return n&&*n>=0?n:std::nullopt;}
 std::string numeric(std::optional<double> n){return n?number(*n):"null";}
 std::string json_text(const Json& j){
@@ -83,14 +83,14 @@ std::string json_text(const Json& j){
   case Json::array:{std::string out="[";for(const auto& v:j.items){if(out.size()>1)out+=',';out+=json_text(v);}return out+']';}}
   return "null";
 }
-bool known(const psx::health::Process& p){return p.pid&&p.birth;}
-bool known(const psx::health::LogCursor& p){return known(p.watchdog)&&known(p.process)&&p.generation;}
+bool known(const xpl::monitor::Process& p){return p.pid&&p.birth;}
+bool known(const xpl::monitor::LogCursor& p){return known(p.watchdog)&&known(p.process)&&p.generation;}
 const char* progress_label(std::string_view s){
   if(s=="ObservedProgress")return "Loading is progressing";if(s=="ActivityOnly")return "Activity without loading milestone";
   if(s=="NoRecentEvidence")return "No recent progress or activity";if(s=="NotLoading")return "Not loading";return "Progress unavailable";
 }
 const char* phase_label(int code){
-  constexpr const char* labels[]={"Unavailable","Initializing","Initialized","Enabling","Enabled","Disabling","Disabled","Loading aircraft","Aircraft complete","Loading aircraft sounds","Aircraft sounds complete","Loading scenery","Scenery complete","Placing aircraft","Placement returned","Flight callbacks","Stopping","Initialization failed"};
+  constexpr const char* labels[]={"Unavailable","Initializing","Initialized","Enabling","Enabled","Disabling","Disabled","Loading aircraft","Aircraft complete","Loading aircraft sounds","Aircraft sounds complete","Loading scenery","Scenery complete","Unavailable","Unavailable","Flight callbacks","Stopping","Initialization failed"};
   return code>=0&&code<static_cast<int>(std::size(labels))?labels[code]:labels[0];
 }
 struct Log {
@@ -107,9 +107,9 @@ Log log(const Json& n){
 }
 
 struct XplaneHealthModel::Data {
-  Json sample;std::uint64_t at{};bool connected{},supported{},more{};
+  Json sample;std::uint64_t at{};bool connected{},supported{},more{},admitted{};
   std::string api_error,log_error;
-  psx::health::LogCursor source{},position{};std::deque<Log> completed;std::optional<Log> latest;
+  xpl::monitor::LogCursor source{},position{};std::deque<Log> completed;std::optional<Log> latest;
   void insert(Log l){
     if(l.partial||!l.sequence)return;
     auto i=std::find_if(completed.begin(),completed.end(),[&](const auto& r){return r.sequence==l.sequence;});
@@ -122,7 +122,7 @@ XplaneHealthModel::XplaneHealthModel():data_(std::make_unique<Data>()){}
 XplaneHealthModel::~XplaneHealthModel()=default;
 bool XplaneHealthModel::status(std::string_view bytes,std::uint64_t at){try{
   auto s=response(bytes,"GetStatus");auto watchdog=process(s.get("source").get("watchdog"));auto xplane=process(s.get("source").get("xplane"));
-  std::uint64_t generation{};psx::health::LogCursor advertised{};std::string log_error;
+  std::uint64_t generation{};xpl::monitor::LogCursor advertised{};std::string log_error;
   try{if(s.get("log_range").get("generation").kind==Json::text)generation=s.get("log_range").get("generation").id();
     if(s.get("log_range").get("supported").yes())advertised=ios::cursor(s.get("log_range").get("source"));
   }catch(const std::exception&){log_error="Log history metadata unavailable";}
@@ -136,7 +136,7 @@ bool XplaneHealthModel::status(std::string_view bytes,std::uint64_t at){try{
   const bool history_identity=known(advertised)&&advertised.watchdog==watchdog&&advertised.process==xplane&&advertised.generation==generation;
   auto effective_generation=history_identity?generation:latest_generation;
   if(!effective_generation&&same_identity)effective_generation=d.source.generation;
-  psx::health::LogCursor source{watchdog,xplane,effective_generation,0};
+  xpl::monitor::LogCursor source{watchdog,xplane,effective_generation,0};
   if(identity&&(!same_identity||(effective_generation&&d.source.generation!=effective_generation))){d.completed.clear();d.latest.reset();d.position={};}
   if(identity)d.source=source;
   const bool supported=s.get("log_range").get("supported").yes()&&known(advertised)&&same_source(advertised,d.source);
@@ -148,7 +148,7 @@ bool XplaneHealthModel::status(std::string_view bytes,std::uint64_t at){try{
   catch(const std::exception&){log_error="Log history tail invalid";}
   if(latest&&identity&&latest_generation==d.source.generation){d.latest=std::move(latest);if(d.supported)d.insert(*d.latest);}
   else if(latest&&identity)log_error="Latest log belongs to an older generation";
-  d.sample=std::move(s);d.at=at;d.connected=true;d.api_error.clear();d.log_error=std::move(log_error);return true;
+  d.sample=std::move(s);d.at=at;d.connected=true;d.admitted=identity;d.api_error.clear();d.log_error=std::move(log_error);return true;
 }catch(const std::exception&){return false;}}
 bool XplaneHealthModel::logs(std::string_view bytes){try{
   auto s=response(bytes,"GetLogs");
@@ -161,19 +161,20 @@ bool XplaneHealthModel::logs(std::string_view bytes){try{
   auto& d=*data_;if(s.get("reset").yes())d.completed.clear();for(auto& l:lines)d.insert(std::move(l));
   d.position=next;d.more=s.get("has_more").yes();d.log_error.clear();return true;
 }catch(const std::exception&){return false;}}
-void XplaneHealthModel::disconnected(std::string reason){data_->connected=false;data_->api_error=reason.empty()?"Coordinator API unavailable":std::move(reason);}
+void XplaneHealthModel::disconnected(std::string reason){data_->connected=false;data_->api_error=reason.empty()?"XPL Monitor collector unavailable":std::move(reason);}
 void XplaneHealthModel::log_failure(std::string reason){data_->more=false;data_->log_error=std::move(reason);}
 bool XplaneHealthModel::history_supported()const{return data_->supported;}
 bool XplaneHealthModel::has_more()const{return data_->more;}
-psx::health::LogCursor XplaneHealthModel::cursor()const{return data_->position;}
+xpl::monitor::LogCursor XplaneHealthModel::cursor()const{return data_->position;}
 std::string XplaneHealthModel::snapshot(std::uint64_t now)const{
   const auto& d=*data_;const auto& s=d.sample;const double elapsed=now>=d.at?static_cast<double>(now-d.at):std::numeric_limits<double>::infinity();
   auto age=[&](const char* key){auto n=nonnegative(s.get("ages_ms").get(key));return n?*n+elapsed:std::numeric_limits<double>::infinity();};
   const bool connected=d.connected&&s.get("communication_healthy").yes()&&age("communication")<5000;
-  const bool clock=s.get("clock_valid").yes();const bool fresh=connected&&clock&&age("sdk")<=1000;
+  const bool clock=s.get("clock_valid").yes();const bool fresh=connected&&clock&&d.admitted&&age("sdk")<=1000;
   std::string state=s.get("state").string;if(state!="Ready"&&state!="Loading"&&state!="Unknown"&&state!="Unavailable")state="Unknown";
-  if(!connected)state="Unavailable";else if(!fresh&&state!="Unavailable")state="Unknown";
+  if(!connected)state="Unavailable";else if((!fresh||!known(d.source.watchdog)||!known(d.source.process))&&state!="Unavailable")state="Unknown";
   const auto code=s.get("loading").get("phase_code").real();int phase=code&&std::floor(*code)==*code&&*code>=0&&*code<=17?static_cast<int>(*code):0;
+  if(phase==13||phase==14)phase=0; // Reserved in the neutral API; no PSX placement interpretation.
   std::string label=phase_label(phase);if(phase&&!fresh)label+=" (last known)";
   auto progress=s.get("loading").get("progress").string;
   if(!connected||!clock)progress="Unknown";
@@ -182,7 +183,7 @@ std::string XplaneHealthModel::snapshot(std::uint64_t now)const{
   else if(progress=="ActivityOnly"&&age("activity")>5000)progress=age("process")<=2000||fresh?"NoRecentEvidence":"Unknown";
   const auto& a=s.get("activity");std::optional<double> cpu,io;
   auto interval=nonnegative(a.get("interval_ms"));
-  if(connected&&clock&&age("process")<=2000&&a.get("valid").yes()&&interval&&*interval>0){
+  if(connected&&clock&&d.admitted&&age("process")<=2000&&a.get("valid").yes()&&interval&&*interval>0){
     auto ms=nonnegative(a.get("cpu_delta_ms")),count=nonnegative(a.get("logical_processor_count"));
     if(ms&&count&&*count>=1&&std::floor(*count)==*count){auto v=100*(*ms / *interval)/ *count;if(std::isfinite(v))cpu=std::clamp(v,0.,100.);}
     auto read=nonnegative(a.get("read_bytes_delta")),write=nonnegative(a.get("write_bytes_delta"));
@@ -198,7 +199,7 @@ std::string XplaneHealthModel::snapshot(std::uint64_t now)const{
 }
 
 struct XplaneHealth::Impl {
-  mutable std::mutex mutex;std::condition_variable cv;bool ending{};XplaneHealthModel model;psx::health::ConsumerClient client;std::thread worker;
+  mutable std::mutex mutex;std::condition_variable cv;bool ending{};XplaneHealthModel model;xpl::monitor::ConsumerClient client;std::thread worker;
   Impl(std::wstring endpoint,std::wstring image):client(std::move(endpoint),std::move(image)),worker([this]{run();}){}
   ~Impl(){{std::lock_guard lock(mutex);ending=true;}cv.notify_all();worker.join();}
   void run(){
@@ -206,12 +207,12 @@ struct XplaneHealth::Impl {
     while(!ending){
       const auto start=std::chrono::steady_clock::now();std::string body;std::uint32_t error{};
       lock.unlock();bool ok=client.get_status(body,error);lock.lock();
-      const bool received=ok;if(ok)ok=model.status(body,now());if(!ok){model.disconnected(received?"Invalid coordinator status reply":"Status API unavailable (Windows error "+std::to_string(error)+")");client.close();}
+      const bool received=ok;if(ok)ok=model.status(body,now());if(!ok){model.disconnected(received?"Invalid XPL Monitor status reply":"Status API unavailable (Windows error "+std::to_string(error)+")");client.close();}
       // Drain bounded retained pages, coalescing into five rows. An error ends
       // this turn; a disconnected pipe is retried at the ordinary one-second turn.
       for(unsigned page=0;ok&&!ending&&model.history_supported()&&model.has_more()&&page<8;++page){
         auto position=model.cursor();lock.unlock();ok=client.get_logs(position,32,body,error);lock.lock();
-        const bool received_logs=ok;if(ok)ok=model.logs(body);if(!ok){model.log_failure(received_logs?"Invalid coordinator log reply":"Log read unavailable (Windows error "+std::to_string(error)+")");client.close();break;}if(!model.has_more())break;
+        const bool received_logs=ok;if(ok)ok=model.logs(body);if(!ok){model.log_failure(received_logs?"Invalid XPL Monitor log reply":"Log read unavailable (Windows error "+std::to_string(error)+")");client.close();break;}if(!model.has_more())break;
       }
       // Fresh successful reads stay below the existing one-second SDK budget;
       // unavailable peers retain the ordinary one-second reconnect cadence.

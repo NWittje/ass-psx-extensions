@@ -1,5 +1,5 @@
 #pragma once
-#include <psx/health/consumer.hpp>
+#include <xpl/monitor/consumer.hpp>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -19,7 +19,7 @@ public:
   void log_failure(std::string reason);
   bool history_supported() const;
   bool has_more() const;
-  psx::health::LogCursor cursor() const;
+  xpl::monitor::LogCursor cursor() const;
   std::string snapshot(std::uint64_t now_ms) const;
 };
 
@@ -29,7 +29,7 @@ class XplaneHealth final {
   struct Impl;
   std::unique_ptr<Impl> impl_;
 public:
-  explicit XplaneHealth(std::wstring endpoint = {}, std::wstring server_image = L"psx-xp-coordinator.exe");
+  explicit XplaneHealth(std::wstring endpoint = {}, std::wstring server_image = L"xpl-watchdog.exe");
   ~XplaneHealth();
   std::string snapshot() const;
 };

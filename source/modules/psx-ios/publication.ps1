@@ -71,6 +71,20 @@ function Assert-IosExistingPackage($State,[string]$Destination,$Manifest,[string
   if($found.Count-ne1-or$found[0].Bytes-ne$entry.bytes-or$found[0].SHA256-ine$entry.sha256){throw "Existing IOS immutable payload differs: $relative"}
   $known[$relative]=$true
  }
+ # Shared dependencies live exactly one parent above the executable. Legacy
+ # adjacent manifests remain admissible until their normal publication migrates.
+ if($Manifest.PSObject.Properties['shared_runtime']){
+  $parent=Split-Path -Parent ([IO.Path]::GetFullPath($Destination))
+  $shared=$Manifest.shared_runtime
+  if([IO.Path]::GetFullPath([string]$shared.directory)-ine$parent-or@($shared.files).Count-ne2){throw 'Invalid shared IOS runtime scope.'}
+  $seenShared=@{}
+  foreach($row in $shared.files){
+   $name=[IO.Path]::GetFileName([string]$row.path)
+   if($name-notin@('ass_graphics_lib.dll','ass_graphics_lib.pdb')-or$seenShared.ContainsKey($name)-or[IO.Path]::GetFullPath([string]$row.path)-ine(Join-Path $parent $name)){throw 'Invalid shared IOS runtime member.'}
+   $seenShared[$name]=$true
+   if(-not[IO.File]::Exists($row.path)-or(Get-Item -LiteralPath $row.path).Length-ne$row.bytes-or(Get-FileHash -LiteralPath $row.path).Hash-ine$row.sha256){throw 'Shared IOS runtime changed.'}
+  }
+ }
  foreach($entry in $State.Files){if(-not$known.ContainsKey($entry.Path)){throw "Unrecognized IOS package file retained: $($entry.Path)"}}
  foreach($directory in $State.Directories){if(-not@($State.Files|Where-Object {$_.Path.StartsWith($directory+'\',[StringComparison]::OrdinalIgnoreCase)}).Count){throw "Empty or unrecognized IOS package directory retained: $directory"}}
 }

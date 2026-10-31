@@ -1,10 +1,13 @@
-param([ValidateSet('All','Debug','Release')][string]$Configuration='All',[string]$BuildDirectory='',[switch]$SkipPublish,[string]$AssGraphicsSdkRoot=$env:ASS_GRAPHICS_SDK_ROOT,[string]$GraphicsSourceRoot='',[string]$NodeExecutable=(Join-Path $env:USERPROFILE '.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node.exe'))
+param([ValidateSet('All','Debug','Release')][string]$Configuration='All',[string]$BuildDirectory='',[switch]$SkipPublish,[string]$AssGraphicsSdkRoot=$env:ASS_GRAPHICS_SDK_ROOT,[string]$GraphicsSourceRoot='',[string]$XplMonitorClientRoot='P:\development\xpl-monitor\sdk\client\1.0.0',[string]$WorkProjectRoot='',[string]$NodeExecutable=(Join-Path $env:USERPROFILE '.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node.exe'))
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'graphics-sdk.ps1')
 $graphicsSdk=Resolve-IosGraphicsSdk $AssGraphicsSdkRoot
+. (Join-Path $PSScriptRoot 'monitor-sdk.ps1')
+$monitorSdk=Get-IosMonitorSdk $XplMonitorClientRoot
 $sourceRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $repo=if((Split-Path -Leaf $sourceRoot) -eq 'source'){Split-Path -Parent $sourceRoot}else{$sourceRoot}
 $developmentRoot='O:\psx'
+if($WorkProjectRoot){$developmentRoot=[IO.Path]::GetFullPath($WorkProjectRoot)}
 $cleanupHelper=Join-Path $developmentRoot 'scripts/work-cleanup.ps1'
 . $cleanupHelper -CleanupProjectRoot $developmentRoot
 if(-not $BuildDirectory){$BuildDirectory=Join-Path $developmentRoot ('bin/.work/psx-ios-'+[Guid]::NewGuid().ToString('N'))}
@@ -22,7 +25,7 @@ try{
  foreach($name in 'TEMP','TMP','TMPDIR'){[Environment]::SetEnvironmentVariable($name,$outcome.temporary,'Process')}
  [Environment]::SetEnvironmentVariable('MSBUILDDISABLENODEREUSE','1','Process')
  $outcome.phase='configure'
- & $cmake -S $PSScriptRoot -B $BuildDirectory -G 'Visual Studio 18 2026' -A x64 "-DIOS_NODE_EXECUTABLE=$NodeExecutable" "-DASS_GRAPHICS_SDK_ROOT=$($graphicsSdk.Root)"
+ & $cmake -S $PSScriptRoot -B $BuildDirectory -G 'Visual Studio 18 2026' -A x64 "-DIOS_NODE_EXECUTABLE=$NodeExecutable" "-DASS_GRAPHICS_SDK_ROOT=$($graphicsSdk.Root)" "-DXPL_MONITOR_CLIENT_ROOT=$($monitorSdk.Root)"
  if($LASTEXITCODE -ne 0){throw 'IOS configuration failed'}
  $configs=if($Configuration -eq 'All'){@('Debug','Release')}else{@($Configuration)}
  foreach($cfg in $configs){
@@ -36,7 +39,7 @@ try{
   if($LASTEXITCODE -ne 0){throw "IOS $cfg tests failed"}
   if(-not $SkipPublish -and $cfg -eq 'Release'){
    $outcome.phase="publish $cfg"
-   & (Join-Path $PSScriptRoot 'publish.ps1') -Configuration $cfg -BuildDirectory $BuildDirectory -AssGraphicsSdkRoot $graphicsSdk.Root -GraphicsSourceRoot $GraphicsSourceRoot
+   & (Join-Path $PSScriptRoot 'publish.ps1') -Configuration $cfg -BuildDirectory $BuildDirectory -AssGraphicsSdkRoot $graphicsSdk.Root -GraphicsSourceRoot $GraphicsSourceRoot -XplMonitorClientRoot $monitorSdk.Root -WorkProjectRoot $developmentRoot
   }
  }
  $outcome.completed=$true;$outcome.published=(-not $SkipPublish -and $Configuration -in @('All','Release'));$outcome.phase='owner collection review'

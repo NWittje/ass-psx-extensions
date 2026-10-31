@@ -86,3 +86,21 @@ quicksaves, customer assets and build leftovers. HWIO's required catalogue/modul
 XML comes from authored factory definitions, never the operator's edited copies.
 The source repository remains an inventory with explicitly omitted dependencies,
 not a self-contained application build distribution.
+
+## IOS independent monitoring client
+
+IOS consumes the external XPL Monitor static-client SDK through
+`find_package(XplMonitorClient 1 CONFIG REQUIRED)` and `xpl_monitor::client`.
+Select its root with `XPL_MONITOR_CLIENT_ROOT` (CMake) or
+`-XplMonitorClientRoot` (IOS build/publish entry). The qualified local SDK is
+`P:\development\xpl-monitor\sdk\client\1.0.0`; its headers, libraries,
+compile PDBs and contract stay outside this source repository.
+
+The selected SDK uses MSVC19.51/toolset14.51 and Windows SDK10.0.26100.0,
+C++20, /MDd Debug and /MD Release. IOS and its compiled dependencies use the
+matching CRT edition. Release requires the Microsoft Visual C++ x64 runtime;
+internal Debug qualification uses the installed Visual Studio debug runtime.
+The static client adds no NORM, XPLM, PSX or monitoring-server runtime dependency.
+It reads the current user's independent collector endpoint and validates the
+`xpl-watchdog.exe` peer. Host mode requires explicit endpoint selection; absent
+collectors do not fall back to a coordinator-hosted monitoring service.

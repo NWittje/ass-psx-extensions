@@ -95,7 +95,7 @@ class Runtime {
   void database();
 
 public:
-  explicit Runtime(std::filesystem::path, std::filesystem::path navigation_metadata = {}, std::filesystem::path time_data = {}, std::wstring coordinator_endpoint = {},std::wstring hwio_endpoint = {}, TerrainPreflight::Check terrain_check = {});
+  explicit Runtime(std::filesystem::path, std::filesystem::path navigation_metadata = {}, std::filesystem::path time_data = {}, std::wstring coordinator_endpoint = {},std::wstring hwio_endpoint = {}, TerrainPreflight::Check terrain_check = {}, std::wstring monitor_endpoint = {}, std::wstring monitor_image = L"xpl-watchdog.exe");
   ~Runtime();
   Runtime(const Runtime &) = delete;
   Runtime &operator=(const Runtime &) = delete;

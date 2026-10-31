@@ -235,8 +235,8 @@ Binding binding(const Config &c, const psx::network::Inventory &inv) {
     b.notice = "No usable LAN IPv4 address; loopback remains available";
   return b;
 }
-Runtime::Runtime(std::filesystem::path p, std::filesystem::path navigation_metadata, std::filesystem::path time_data,std::wstring coordinator_endpoint,std::wstring hwio_endpoint,TerrainPreflight::Check terrain_check)
-  : directory_(std::move(p)), time_data_(time_data.empty()?directory_/"environment-time.bin":std::move(time_data)), coordinator_endpoint_(std::move(coordinator_endpoint)),hwio_endpoint_(std::move(hwio_endpoint)),terrain_(std::move(terrain_check)), database_selection_(navigation_metadata), performance_selection_(navigation_metadata.empty()?std::filesystem::path{}:navigation_metadata.parent_path()/"performance"),instructor_metadata_(navigation_metadata.empty()?std::filesystem::path{}:navigation_metadata.parent_path()/"instructor") {
+Runtime::Runtime(std::filesystem::path p, std::filesystem::path navigation_metadata, std::filesystem::path time_data,std::wstring coordinator_endpoint,std::wstring hwio_endpoint,TerrainPreflight::Check terrain_check,std::wstring monitor_endpoint,std::wstring monitor_image)
+  : directory_(std::move(p)), time_data_(time_data.empty()?directory_/"environment-time.bin":std::move(time_data)), coordinator_endpoint_(std::move(coordinator_endpoint)),hwio_endpoint_(std::move(hwio_endpoint)),terrain_(std::move(terrain_check)),xplane_health_(std::move(monitor_endpoint),std::move(monitor_image)), database_selection_(navigation_metadata), performance_selection_(navigation_metadata.empty()?std::filesystem::path{}:navigation_metadata.parent_path()/"performance"),instructor_metadata_(navigation_metadata.empty()?std::filesystem::path{}:navigation_metadata.parent_path()/"instructor") {
   std::filesystem::create_directories(directory_);
   config_ = read_config(directory_ / "settings.cfg");
   profiles_ = read_profiles(directory_ / "clients.cfg");
