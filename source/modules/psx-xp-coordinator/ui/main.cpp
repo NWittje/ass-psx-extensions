@@ -6,6 +6,7 @@
 #include "coordinator/scenery_view_control.hpp"
 #include "coordinator/runtime_rebind.hpp"
 #include <psx/sync/runtime.hpp>
+#include <psx/sync/journal.hpp>
 #include <ass_graphics/graphics.hpp>
 #include <application-icon.hpp>
 #include <windows.h>
@@ -199,7 +200,7 @@ class CoordinatorUi {
         if(rebind_.pending()){
             if(!rebind_.advance(*runtime_,[&]{
                 psx::sync::stop_runtime();network_settings_=std::move(pending_network_settings_);
-                const bool started=psx::sync::start_runtime(psx::sync::Role::coordinator,network_settings_);
+                const bool started=psx::sync::start_runtime(psx::sync::Role::coordinator,network_settings_,{},psx::sync::journal_sink(runtime_->diagnostics));
                 runtime_->start_non_normal();automatic_follow_.reset_binding();
                 if(!started)throw std::runtime_error("X-Plane network startup failed; retrying remains available");
             }))return;
@@ -410,7 +411,7 @@ public:
         options.build="psx-xp-coordinator network-" PSX_COORDINATOR_VERSION;runtime_=std::make_unique<coordinator::Runtime>(options);
         if(smoke_path_.empty()){
             network_settings_=psx::sync::read_settings(psx::sync::Role::coordinator);
-            if(!psx::sync::start_runtime(psx::sync::Role::coordinator,network_settings_))runtime_->log.add(coordinator::Level::warning,"X-Plane network startup unavailable; automatic retries remain active");
+            if(!psx::sync::start_runtime(psx::sync::Role::coordinator,network_settings_,{},psx::sync::journal_sink(runtime_->diagnostics)))runtime_->log.add(coordinator::Level::warning,"X-Plane network startup unavailable; automatic retries remain active");
             runtime_->start_non_normal();
         }
         build();controls_[xplane_host].enabled(network_settings_.enabled);try{tray_=std::make_unique<gfx::Tray>(window_,L"PSX / X-Plane coordinator");}catch(const std::exception&){runtime_->log.add(coordinator::Level::warning,"Tray unavailable; Close exits");}

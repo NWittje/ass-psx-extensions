@@ -10,7 +10,7 @@ struct Settings {
 };
 Settings read_settings(Role,const std::wstring& explicit_path={});
 void save_connection(const Settings&); // Only XPlaneConnection and XPlaneHost.
-bool start_runtime(Role,const Settings&,const std::wstring& qualified_dll={});
+bool start_runtime(Role,const Settings&,const std::wstring& qualified_dll={},DiagnosticSink diagnostics={});
 void stop_runtime()noexcept;
 Endpoint* runtime()noexcept;
 bool enabled()noexcept;

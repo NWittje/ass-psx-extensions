@@ -1,5 +1,6 @@
 #include "psx_plugin/plugin.hpp"
 #include <psx/sync/runtime.hpp>
+#include <psx/sync/journal.hpp>
 #include <XPLMUtilities.h>
 #include <XPLMPlanes.h>
 #include <cmath>
@@ -87,7 +88,7 @@ bool Plugin::enable() {
     ++enable_id_;
     try {
 #ifndef PSX_PLUGIN_OFFLINE_TEST
-        if(!psx::sync::start_runtime(psx::sync::Role::plugin,psx::sync::read_settings(psx::sync::Role::plugin)))return false;
+        if(!psx::sync::start_runtime(psx::sync::Role::plugin,psx::sync::read_settings(psx::sync::Role::plugin),{},psx::sync::journal_sink(*journal_,{0,load_id_,enable_id_})))return false;
 #endif
         XPLMCreateFlightLoop_t params{};
         params.structSize = sizeof(params);

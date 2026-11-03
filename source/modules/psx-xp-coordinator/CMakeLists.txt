@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.30)
-project(psx_xp_coordinator VERSION 1.0.0 LANGUAGES CXX)
+project(psx_xp_coordinator VERSION 1.2.2 LANGUAGES CXX)
 if(NOT TARGET psx_concurrency)
   add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../shared/concurrency" "${CMAKE_CURRENT_BINARY_DIR}/shared-concurrency")
 endif()
@@ -274,6 +274,10 @@ add_test(NAME coordinator_scenery_view_control COMMAND coordinator_scenery_view_
 find_program(COORDINATOR_TEST_POWERSHELL NAMES powershell.exe REQUIRED)
 add_test(NAME coordinator_ui_lifecycle COMMAND "${COORDINATOR_TEST_POWERSHELL}" -NoProfile -ExecutionPolicy Bypass -File "${CMAKE_CURRENT_SOURCE_DIR}/tests/ui-version-check.ps1" -Executable "$<TARGET_FILE:psx-xp-coordinator>" -Evidence "${CMAKE_CURRENT_BINARY_DIR}/ui-smoke")
 set_tests_properties(coordinator_ui_lifecycle PROPERTIES TIMEOUT 20)
+add_executable(coordinator_transport_diagnostics_tests tests/transport_diagnostics_capture_tests.cpp)
+target_link_libraries(coordinator_transport_diagnostics_tests PRIVATE coordinator_core)
+add_test(NAME coordinator_transport_diagnostics_capture COMMAND coordinator_transport_diagnostics_tests "$<TARGET_FILE:norm>" "${CMAKE_CURRENT_BINARY_DIR}/transport-diagnostics/$<CONFIG>")
+set_tests_properties(coordinator_transport_diagnostics_capture PROPERTIES TIMEOUT 20 RUN_SERIAL TRUE)
 psx_stamp_directory("${CMAKE_CURRENT_SOURCE_DIR}" "${PROJECT_VERSION}")
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../shared/windows-runtime/GraphicsRuntime.cmake")

@@ -1,5 +1,6 @@
 #pragma once
 #include <psx/sync/clock.hpp>
+#include <psx/sync/diagnostics.hpp>
 #include <psx/sync/protocol.hpp>
 #include <memory>
 #include <string>
@@ -9,6 +10,7 @@ struct Options {
  std::uint16_t receive_port{coordinator_port},destination_port{plugin_port};
  std::wstring dll_path;
  double fixture_loss_percent{};
+ DiagnosticSink diagnostics;
 };
 struct LinkStatus {
  bool running{},connected{},clock_valid{};std::uint32_t error{};
@@ -43,6 +45,10 @@ public:
  Binding open_service(Family);
  void close_service(Family,Binding)noexcept;
  bool evidence(Received&);void capture(bool)noexcept;
+ // Sole observer producer; one worker consumes original-domain records without the endpoint mutex.
+ bool diagnostic(psx::diagnostics::Event&) noexcept;
+ std::uint64_t diagnostic_lost()const noexcept;
+ void fixture_native_call_delay(NativeCall,std::uint32_t ms) noexcept;
  void fixture_loss(double percent)noexcept; // Authored fault seam; no product setting.
  void fixture_command_stall(bool)noexcept; // Suppress native command completion in authored tests.
  void fixture_state_stall(bool)noexcept; // Hold replaceable DATA only; link/control still progress.

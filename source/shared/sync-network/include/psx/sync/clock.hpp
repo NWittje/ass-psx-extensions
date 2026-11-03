@@ -17,6 +17,7 @@ public:
  bool current(std::int64_t local_now)const noexcept;
  void reset() noexcept;
  std::uint64_t generation()const noexcept{return generation_;}
+ std::uint64_t last_reply_qpc()const noexcept{return last_;} // Original last accepted local t4.
  std::uint64_t remote_frequency()const noexcept{return remote_frequency_;}
  double uncertainty_ms(std::int64_t local_now)const noexcept;
  unsigned checkpoint(std::array<ClockExchange,17>&)const noexcept;

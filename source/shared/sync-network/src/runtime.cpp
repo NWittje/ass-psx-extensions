@@ -40,9 +40,9 @@ void save_connection(const Settings& s){
  const std::wstring host(s.host.begin(),s.host.end());
  if(!WritePrivateProfileStringW(L"Connection",L"XPlaneHost",host.c_str(),s.path.c_str())||!WritePrivateProfileStringW(L"Connection",L"XPlaneConnection",s.enabled?L"Remote":L"LocalPipe",s.path.c_str()))throw std::runtime_error("Cannot save X-Plane connection settings");
 }
-bool start_runtime(Role role,const Settings& settings,const std::wstring& qualified_dll){
+bool start_runtime(Role role,const Settings& settings,const std::wstring& qualified_dll,DiagnosticSink diagnostics){
  std::lock_guard lock(lifetime);if(!settings.enabled)return !published.load();if(instance)return true;
- auto next=std::make_unique<Endpoint>();Options o;o.role=role;o.host=settings.host;o.receive_port=settings.receive_port;o.destination_port=settings.destination_port;o.dll_path=qualified_dll;
+ auto next=std::make_unique<Endpoint>();Options o;o.role=role;o.host=settings.host;o.receive_port=settings.receive_port;o.destination_port=settings.destination_port;o.dll_path=qualified_dll;o.diagnostics=diagnostics;
  if(!next->start(o))return false;instance=std::move(next);runtime_role.store(role,std::memory_order_release);published.store(instance.get(),std::memory_order_release);return true;
 }
 void stop_runtime()noexcept{std::lock_guard lock(lifetime);published.store(nullptr,std::memory_order_release);if(instance)instance->stop();instance.reset();}

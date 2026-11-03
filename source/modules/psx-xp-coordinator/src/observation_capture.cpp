@@ -151,7 +151,7 @@ bool ObservationCapture::start(const std::wstring& path,const ObservationSession
     seed_->public_window=b::matches(window,model.latest().session());seed_->complete_window=exporter&&exporter->history().window().count;
     seed_records_=1;for(bool available:model.latest().available())if(available)++seed_records_;
     seed_records_+=seed_->public_window?1:0;seed_records_+=seed_->complete_window?1:0;
-    remote_=psx::sync::enabled();network_checkpoint_=0;network_connection_=0;if(auto* endpoint=psx::sync::runtime()){endpoint->capture(true);network_lost_=endpoint->status().capture_lost;}
+    remote_=psx::sync::enabled();network_checkpoint_=0;network_connection_=0;if(auto* endpoint=psx::sync::runtime()){endpoint->capture(true);network_lost_=endpoint->status().capture_lost+endpoint->diagnostic_lost();}
     ordinal_=seed_records_;frequency_=frequency;status_.records=ordinal_;status_.active=true;recording_=true;seed_ready_=true;ready_.notify_one();return true;
 }
 bool ObservationCapture::append(CaptureKind kind,std::int64_t qpc,const Bytes& payload) {
@@ -205,8 +205,11 @@ void ObservationCapture::observe_network_loss(std::uint64_t lost){
 }
 void ObservationCapture::network(){
     if(!remote_||!recording_)return;auto* endpoint=psx::sync::runtime();if(!endpoint){stop(CaptureStopReason::network_evidence);return;}
+    // Drain original-domain observer events before any endpoint-lock acquisition.
+    // The observer can persist an active native call even while context() waits.
+    psx::diagnostics::Event event;for(unsigned budget=0;budget<32&&endpoint->diagnostic(event);++budget){b::DiagnosticBatch batch;batch.connection_id=1;batch.count=1;batch.events[0]=event;diagnostics(batch,qpc_now());}
     const auto context=endpoint->context();const auto& s=context.status;const auto now=qpc_now();
-    observe_network_loss(s.capture_lost);
+    observe_network_loss(s.capture_lost+endpoint->diagnostic_lost());
     if(!network_checkpoint_||s.connection!=network_connection_||now-network_checkpoint_>=static_cast<std::int64_t>(frequency_/4)){
         const auto& clock=context.clock;std::array<psx::sync::ClockExchange,17> samples{};const auto count=clock.checkpoint(samples);Bytes data;
         u(data,2,4);u(data,(s.running?1:0)|(s.connected?2:0)|(s.clock_valid?4:0),4);u(data,s.connection,8);u(data,clock.generation(),8);u(data,s.local_frequency,8);u(data,s.remote_frequency,8);

@@ -4,6 +4,7 @@
 #include <bcrypt.h>
 #include <normApi.h>
 #include <psx/sync/transport.hpp>
+#include "transport_diagnostics.hpp"
 #include <psx/windows/runtime_dependency.hpp>
 #include <psx/sync/mailbox.hpp>
 #include <psx/aircraft_sync/protocol.hpp>
@@ -46,18 +47,18 @@ void put(std::uint8_t* p,std::uint64_t n){for(unsigned i=0;i<8;++i)p[i]=std::uin
 std::uint64_t get(const std::uint8_t*p){std::uint64_t n{};for(unsigned i=0;i<8;++i)n|=std::uint64_t(p[i])<<(i*8);return n;}
 struct Api {
  HMODULE dll{};bool loaded{};
-#define FN(name) decltype(&Norm##name) name{}
+#define FN(name) NativeApi<decltype(&Norm##name),NativeCall::name> name{}
  FN(CreateInstance);FN(DestroyInstance);FN(CreateSession);FN(DestroySession);FN(StartReceiver);FN(StopReceiver);FN(StartSender);FN(StopSender);
  FN(SetTxOnly);FN(SetTxPort);FN(SetRxPortReuse);FN(SetDefaultUnicastNack);FN(SetDefaultSyncPolicy);FN(SetRxCacheLimit);FN(SetTxCacheBounds);
  FN(SetTxRate);FN(GetTxRate);FN(SetCongestionControl);FN(SetGrttEstimate);FN(SetTxLoss);FN(SetRxLoss);FN(DataEnqueue);FN(ObjectCancel);FN(GetNextEvent);
  FN(ObjectGetSize);FN(ObjectGetType);FN(DataAccessData);FN(DataDetachData);FN(NodeGetAddress);FN(SendCommand);FN(CancelCommand);FN(NodeGetCommand);FN(GetDescriptor);
  FN(SetAllocationFunctions);
 #undef FN
- void load(const std::wstring& p){if(loaded)return;if(dll)FreeLibrary(dll);dll=LoadLibraryExW(p.c_str(),nullptr,LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_SYSTEM32);if(!dll)throw std::runtime_error("Adjacent/parent Norm.dll or its runtime dependencies unavailable");
+ void load(const std::wstring& p,TransportDiagnostics& diagnostics){if(loaded)return;if(dll)FreeLibrary(dll);dll=LoadLibraryExW(p.c_str(),nullptr,LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_SYSTEM32);if(!dll)throw std::runtime_error("Adjacent/parent Norm.dll or its runtime dependencies unavailable");
   // The dynamic adapter must not create static imports of exported constants.
   // Verify this DLL's invalid-handle representation before using null sentinels.
   for(const auto* name:{"NORM_INSTANCE_INVALID","NORM_SESSION_INVALID","NORM_OBJECT_INVALID"}){const auto* value=reinterpret_cast<const void* const*>(GetProcAddress(dll,name));if(!value||*value)throw std::runtime_error("Unsupported NORM invalid-handle representation");}
-#define LOAD(name) name=reinterpret_cast<decltype(name)>(GetProcAddress(dll,"Norm" #name));if(!name)throw std::runtime_error("Missing NORM API: " #name)
+#define LOAD(name) name.address=reinterpret_cast<decltype(name.address)>(GetProcAddress(dll,"Norm" #name));name.diagnostics=&diagnostics;if(!name.address)throw std::runtime_error("Missing NORM API: " #name)
  LOAD(CreateInstance);LOAD(DestroyInstance);LOAD(CreateSession);LOAD(DestroySession);LOAD(StartReceiver);LOAD(StopReceiver);LOAD(StartSender);LOAD(StopSender);
  LOAD(SetTxOnly);LOAD(SetTxPort);LOAD(SetRxPortReuse);LOAD(SetDefaultUnicastNack);LOAD(SetDefaultSyncPolicy);LOAD(SetRxCacheLimit);LOAD(SetTxCacheBounds);
  LOAD(SetTxRate);LOAD(GetTxRate);LOAD(SetCongestionControl);LOAD(SetGrttEstimate);LOAD(SetTxLoss);LOAD(SetRxLoss);LOAD(DataEnqueue);LOAD(ObjectCancel);LOAD(GetNextEvent);
@@ -76,7 +77,16 @@ bool capture_detail(Family family,std::uint64_t key)noexcept{
 }
 struct Endpoint::Impl {
  Options options;HANDLE stop{CreateEventW(nullptr,TRUE,FALSE,nullptr)},wake{CreateEventW(nullptr,FALSE,FALSE,nullptr)},ready{CreateEventW(nullptr,TRUE,FALSE,nullptr)};
- std::thread thread;mutable std::mutex mutex;LinkStatus view;ClockMap clocks;
+ std::thread thread,diagnostic_thread;HANDLE diagnostic_stop{CreateEventW(nullptr,TRUE,FALSE,nullptr)};
+ TransportDiagnostics diagnostics;
+ mutable std::mutex mutex;LinkStatus view;ClockMap clocks;
+ std::uint64_t loop_sequence{},loop_qpc{},command_full{};
+ TransportProgress diagnostic_progress()const noexcept {
+  return {static_cast<std::uint64_t>(options.role),connection,view.generation,view.local_frequency,
+   static_cast<std::uint64_t>(last_progress),clocks.last_reply_qpc(),loop_sequence,loop_qpc,view.native_errors,
+   command_full,command_size,command_size?static_cast<std::uint64_t>(command_queued[command_head]):0,
+   view.expired,view.rejected,self.pid,peer.identity.pid,self.process_birth,peer.identity.process_birth,view.error,(view.running?1u:0u)|(view.connected?2u:0u)|(view.clock_valid?4u:0u)};
+ }
  std::atomic<double> requested_loss{};std::atomic<bool> connected_fast{},command_stall{},state_stall{},completion_stall{},fixed_state_pacing{};
  std::array<Pending,256> pending{};
  std::array<unsigned,8> state_cursor{};
@@ -123,8 +133,9 @@ struct Endpoint::Impl {
   if(family==Family::status)have_readiness=false;
   services.at(family).dirty=false;service_view();
  }
- void fail_service(Family family){services.close(family,services.at(family).generation);reset_service(family);}
- ~Impl(){if(thread.joinable()){SetEvent(stop);SetEvent(wake);thread.join();}if(stop)CloseHandle(stop);if(wake)CloseHandle(wake);if(ready)CloseHandle(ready);}
+ void fail_service(Family family,ServiceFailure reason){diagnostics.service_failure(family,reason,services.at(family).generation,diagnostic_progress(),static_cast<std::uint64_t>(native_qpc()));services.close(family,services.at(family).generation);reset_service(family);}
+ ~Impl(){join();if(stop)CloseHandle(stop);if(wake)CloseHandle(wake);if(ready)CloseHandle(ready);if(diagnostic_stop)CloseHandle(diagnostic_stop);}
+ void join()noexcept{SetEvent(stop);SetEvent(wake);if(thread.joinable())thread.join();SetEvent(diagnostic_stop);if(diagnostic_thread.joinable())diagnostic_thread.join();}
  void cancel(Pending& p){if(p.object!=nullptr){api.ObjectCancel(p.object);p.object=nullptr;}p.active=false;}
  void omitted(Family family,std::uint64_t key,bool local)noexcept{
   if(!capture_detail(family,key))return;
@@ -132,7 +143,7 @@ struct Endpoint::Impl {
   if(capturing&&view.capture_lost!=UINT64_MAX)++view.capture_lost;
  }
  void cancel_command(){if(command_busy&&command_tx)api.CancelCommand(command_tx);command_busy=false;}
- void retire(){connected_fast.store(false,std::memory_order_release);if(connection)retired_connections[retired_cursor++%retired_connections.size()]=connection;for(auto& p:pending)if(p.active){if(!p.completed)omitted(p.family,p.key,true);cancel(p);}cancel_command();if(command_tx){api.StopSender(command_tx);api.DestroySession(command_tx);command_tx=nullptr;}for(auto& t:tx)if(t!=nullptr){api.StopSender(t);api.DestroySession(t);t=nullptr;}for(auto& p:latest){if(p.active)omitted(p.family,p.key,true);p.active=false;}for(auto& q:inbox){for(unsigned i=0;i<q.size;++i){const auto& h=q.values[(q.head+i)%q.values.size()].header;omitted(h.family,h.key,false);}q.head=q.size=0;}for(auto& d:deferred){if(d.active)omitted(d.header.family,d.header.key,false);d.active=false;}peer_capture_detail_lost=0;have_peer_capture_detail_lost=false;command_head=command_size=0;clock_requests={};have_appearance_baseline={};have_readiness=false;have_audio=false;clocks.reset();peer={};connection=0;received_control={};control_sequence={};acknowledged={};state_barrier={};key_barriers={};state_sequences.clear();attached=false;view.connected=view.clock_valid=false;view.peer={};view.remote_address={};view.remote_receive_port=0;view.connection=0;published_margin.store(UINT64_MAX,std::memory_order_release);last_sent={};services.clear();observation_baseline={};observation_epoch={};service_view();++view.generation;++view.reconnects;ResetEvent(ready);}
+ void retire(Retirement reason){diagnostics.retire(reason,diagnostic_progress(),static_cast<std::uint64_t>(native_qpc()),view.failure.data());connected_fast.store(false,std::memory_order_release);if(connection)retired_connections[retired_cursor++%retired_connections.size()]=connection;for(auto& p:pending)if(p.active){if(!p.completed)omitted(p.family,p.key,true);cancel(p);}cancel_command();if(command_tx){api.StopSender(command_tx);api.DestroySession(command_tx);command_tx=nullptr;}for(auto& t:tx)if(t!=nullptr){api.StopSender(t);api.DestroySession(t);t=nullptr;}for(auto& p:latest){if(p.active)omitted(p.family,p.key,true);p.active=false;}for(auto& q:inbox){for(unsigned i=0;i<q.size;++i){const auto& h=q.values[(q.head+i)%q.values.size()].header;omitted(h.family,h.key,false);}q.head=q.size=0;}for(auto& d:deferred){if(d.active)omitted(d.header.family,d.header.key,false);d.active=false;}peer_capture_detail_lost=0;have_peer_capture_detail_lost=false;command_head=command_size=0;clock_requests={};have_appearance_baseline={};have_readiness=false;have_audio=false;clocks.reset();peer={};connection=0;received_control={};control_sequence={};acknowledged={};state_barrier={};key_barriers={};state_sequences.clear();attached=false;view.connected=view.clock_valid=false;view.peer={};view.remote_address={};view.remote_receive_port=0;view.connection=0;published_margin.store(UINT64_MAX,std::memory_order_release);last_sent={};services.clear();observation_baseline={};observation_epoch={};service_view();++view.generation;++view.reconnects;ResetEvent(ready);}
  void clear_native(){for(auto& p:pending)if(p.active)cancel(p);cancel_command();if(command_tx){api.StopSender(command_tx);api.DestroySession(command_tx);command_tx=nullptr;}for(auto& t:tx)if(t!=nullptr){api.StopSender(t);api.DestroySession(t);t=nullptr;}for(auto& r:rx)if(r!=nullptr){api.StopReceiver(r);api.DestroySession(r);r=nullptr;}if(instance!=nullptr){api.DestroyInstance(instance);instance=nullptr;}}
  std::uint32_t node_id(unsigned slot){if(node_ids[slot])return node_ids[slot];std::uint32_t n{};do{n=std::uint32_t(nonce());}while(!n||n==UINT32_MAX||std::find(node_ids.begin(),node_ids.end(),n)!=node_ids.end());return node_ids[slot]=n;}
  std::uint16_t next_native_session(){if(!++native_session)++native_session;return native_session;}
@@ -162,7 +173,7 @@ struct Endpoint::Impl {
   handshake_started=native_qpc();
  }
  bool command(Kind kind,std::span<const std::uint8_t> bytes={},std::uint64_t key=0,unsigned domain=0,Family family=Family::link){
-  if(command_tx==nullptr||command_size==command_frames.size())return false;
+  if(command_tx==nullptr)return false;if(command_size==command_frames.size()){++command_full;return false;}
   if(kind==Kind::ack)family=domain==8?Family::observation:Family(domain);
   Header h;h.kind=kind;h.family=family;h.producer=self;h.frequency=view.local_frequency;h.connection=connection;h.sequence=++wire_sequence;h.observed_qpc=native_qpc();h.key=key;h.control_floor=domain;
   if(family!=Family::link){const auto& s=services.at(family);h.source_service=s.local;h.target_service=s.remote;}
@@ -221,7 +232,7 @@ struct Endpoint::Impl {
    // chooses a fresh identity instead of keeping the dead binding alive.
    if(connection&&!h.connection&&next.identity==peer.identity&&next.boot==peer.boot){hello();return;}
    const bool reset_connection=connection&&options.role==Role::plugin&&h.connection&&h.connection!=connection;
-   if(next.identity!=peer.identity||next.boot!=peer.boot||reset_connection){retire();peer=next;peer_host=host;sender(host,next.receive_port);connection=options.role==Role::coordinator?nonce():h.connection;last_hello=0;}
+   if(next.identity!=peer.identity||next.boot!=peer.boot||reset_connection){const auto reason=next.identity!=peer.identity?Retirement::peer_identity:next.boot!=peer.boot?Retirement::peer_boot:Retirement::peer_connection;retire(reason);peer=next;peer_host=host;sender(host,next.receive_port);connection=options.role==Role::coordinator?nonce():h.connection;last_hello=0;}
    if(options.role==Role::plugin&&h.connection)connection=h.connection;
    view.peer=peer.identity;view.remote_address={};std::copy_n(host.data(),(std::min)(host.size(),view.remote_address.size()-1),view.remote_address.data());view.remote_receive_port=peer.receive_port;view.remote_frequency=peer.frequency;view.connection=connection;last_progress=now;attached=connection!=0;command(Kind::attach);return;
   }
@@ -242,10 +253,10 @@ struct Endpoint::Impl {
    if(!s.active||!s.remote_open||h.source_service!=s.remote||h.target_service!=s.local){++view.rejected;return;}
    if(s.echo!=s.local){s.echo=s.local;service_view();}
   }
-  if(h.kind==Kind::detach){retire();return;}
+  if(h.kind==Kind::detach){retire(Retirement::peer_detach);return;}
   if(h.kind==Kind::attach){attached=true;return;}
   if(h.kind==Kind::clock_request){std::array<std::uint8_t,24> reply{};put(reply.data(),h.key);put(reply.data()+8,std::uint64_t(now));put(reply.data()+16,std::uint64_t(native_qpc()));command(Kind::clock_reply,reply);return;}
-  if(h.kind==Kind::clock_reply){if(b.size()!=24)return;const auto t1=get(b.data());auto found=std::find(clock_requests.begin(),clock_requests.end(),t1);if(found==clock_requests.end()||!t1)return;*found=0;const auto before=clocks.generation();const bool was_current=clocks.current(now);if(clocks.accept({t1,get(b.data()+8),get(b.data()+16),std::uint64_t(now),view.local_frequency,peer.frequency})){if(was_current&&before!=clocks.generation()){retire();return;}view.clock_valid=true;view.clock_uncertainty_ms=clocks.uncertainty_ms(now);}return;}
+  if(h.kind==Kind::clock_reply){if(b.size()!=24)return;const auto t1=get(b.data());auto found=std::find(clock_requests.begin(),clock_requests.end(),t1);if(found==clock_requests.end()||!t1)return;*found=0;const auto before=clocks.generation();const bool was_current=clocks.current(now);if(clocks.accept({t1,get(b.data()+8),get(b.data()+16),std::uint64_t(now),view.local_frequency,peer.frequency})){if(was_current&&before!=clocks.generation()){retire(Retirement::clock_discontinuity);return;}view.clock_valid=true;view.clock_uncertainty_ms=clocks.uncertainty_ms(now);}return;}
   if(h.kind==Kind::ack){const auto domain=h.control_floor;if(!domain||domain>=acknowledged.size()){++view.rejected;return;}acknowledged[domain]=(std::max)(acknowledged[domain],h.key);for(auto& p:pending)if(p.active&&p.control&&(p.key>>32)==domain&&p.sequence<=acknowledged[domain])cancel(p);return;}
   if(h.kind!=Kind::frame||h.family==Family::link||!clocks.current(now)){++view.rejected;return;}
   const auto domain=unsigned(h.key>>32);if(!domain||domain>8||(domain!=(h.family==Family::observation&&((h.key&65535u)>=12&&(h.key&65535u)<=15)?8:unsigned(h.family)))){++view.rejected;return;}
@@ -255,8 +266,8 @@ struct Endpoint::Impl {
   if(!(h.flags&ordered)&&!state_sequences.newer(h.family,h.key,h.sequence))return;
   unsigned occupied{};for(const auto& p:deferred)if(p.active&&p.header.family==h.family)++occupied;Deferred* slot{};for(auto& p:deferred)if(p.active&&(p.header.key>>32)==domain&&p.header.sequence==h.sequence&&p.header.flags==h.flags)return;
   if(!(h.flags&ordered))for(auto& p:deferred)if(p.active&&!(p.header.flags&ordered)&&p.header.family==h.family&&p.header.key==h.key){slot=&p;++view.replaced;omitted(p.header.family,p.header.key,false);break;}
-  if(!slot&&occupied>=(h.family==Family::observation?64u:32u)){++view.rejected;fail_service(h.family);return;}if(!slot)for(auto& p:deferred)if(!p.active){slot=&p;break;}if(!slot){++view.rejected;fail_service(h.family);return;}
-  slot->header=h;slot->size=b.size();slot->received=now;slot->active=true;std::copy(b.begin(),b.end(),slot->bytes.begin());for(unsigned budget=0;budget<7;++budget){const auto failed=flush_deferred();if(failed==Family::link)break;fail_service(failed);if(failed==h.family)return;}++view.received;if(h.flags&ordered)command(Kind::ack,{},received_control[domain],domain);
+  if(!slot&&occupied>=(h.family==Family::observation?64u:32u)){++view.rejected;fail_service(h.family,ServiceFailure::deferred_capacity);return;}if(!slot)for(auto& p:deferred)if(!p.active){slot=&p;break;}if(!slot){++view.rejected;fail_service(h.family,ServiceFailure::deferred_capacity);return;}
+  slot->header=h;slot->size=b.size();slot->received=now;slot->active=true;std::copy(b.begin(),b.end(),slot->bytes.begin());for(unsigned budget=0;budget<7;++budget){const auto failed=flush_deferred();if(failed==Family::link)break;fail_service(failed,ServiceFailure::admission_capacity);if(failed==h.family)return;}++view.received;if(h.flags&ordered)command(Kind::ack,{},received_control[domain],domain);
  }
  void events(){NormEvent e{};for(unsigned budget=0;budget<128&&api.GetNextEvent(instance,&e,false);++budget){
    if(e.type==NORM_TX_OBJECT_PURGED){for(auto& p:pending)if(p.active&&p.object==e.object){p.object=nullptr;if(!p.control)p.active=false;break;}}
@@ -297,7 +308,7 @@ struct Endpoint::Impl {
    // native enqueue opportunity before the other keys in this lane. Keep the
    // ordered reservation's scan order, and rotate only independent state work.
    for(unsigned visited=0;visited<count&&budget;++visited){const unsigned offset=(start+visited)&(count-1);auto& p=pending[first+offset];if(!p.active||unsigned(p.lane)!=priority)continue;
-    if(p.control&&now-p.queued>=std::int64_t(view.local_frequency)){fail_service(p.family);return;}
+    if(p.control&&now-p.queued>=std::int64_t(view.local_frequency)){fail_service(p.family,ServiceFailure::ordered_expired);return;}
     const auto ttl=p.family==Family::observation&&(p.key&65535u)==3&&(((p.key>>16)&65535u)!=6)?1000u:100u;
     if(!p.control&&now-p.queued>=std::int64_t(view.local_frequency*ttl/1000)){if(!p.completed)omitted(p.family,p.key,true);cancel(p);++view.expired;continue;}
     // Enqueueing does not mean the native sender has transmitted this DATA.
@@ -319,15 +330,15 @@ struct Endpoint::Impl {
    if(priority&&budget&&state_burst_active[priority]){state_cursor[priority]=(state_burst_head[priority]+1)&(count-1);state_burst_active[priority]=false;}
   }
  }
- void run(){WSADATA winsock{};bool ws=false;try{
+ void run(){WSADATA winsock{};bool ws=false;auto end_reason=Retirement::shutdown;try{
   if(WSAStartup(MAKEWORD(2,2),&winsock))throw std::runtime_error("Winsock initialization failed");ws=true;
-  api.load(options.dll_path.empty()?default_dll_path():options.dll_path);instance=api.CreateInstance(false);if(instance==nullptr)throw std::runtime_error("NORM instance creation failed");
+  api.load(options.dll_path.empty()?default_dll_path():options.dll_path,diagnostics);instance=api.CreateInstance(false);if(instance==nullptr)throw std::runtime_error("NORM instance creation failed");
   api.SetAllocationFunctions(instance,allocate_receive,free_receive);
   for(unsigned i=0;i<8;++i){auto& r=rx[i];r=api.CreateSession(instance,"127.0.0.1",std::uint16_t(options.receive_port+i),node_id(i));if(r==nullptr)throw std::runtime_error("NORM receiver session creation failed");api.SetRxPortReuse(r,false,nullptr,nullptr,0);api.SetDefaultUnicastNack(r,true);api.SetDefaultSyncPolicy(r,NORM_SYNC_CURRENT);api.SetRxCacheLimit(r,32);if(!api.StartReceiver(r,512*1024))throw std::runtime_error("NORM receive ports unavailable");if(options.fixture_loss_percent)api.SetRxLoss(r,options.fixture_loss_percent);}
   {std::lock_guard lock(mutex);recreate_native=false;view.running=true;view.error=0;view.failure={};}
   std::int64_t resolve_at{};
   while(WaitForSingleObject(stop,0)!=WAIT_OBJECT_0){
-   {std::lock_guard lock(mutex);auto now=native_qpc();for(unsigned f=1;f<8;++f)if(services.at(Family(f)).dirty)reset_service(Family(f));
+   {std::lock_guard lock(mutex);auto now=native_qpc();loop_qpc=static_cast<std::uint64_t>(now);++loop_sequence;diagnostics.progress(diagnostic_progress());for(unsigned f=1;f<8;++f)if(services.at(Family(f)).dirty)reset_service(Family(f));
     const bool fixture_fixed=fixed_state_pacing.load(std::memory_order_acquire);
     if(fixture_fixed!=view.fixture_fixed_state_pacing){
      for(unsigned i=1;i<tx.size();++i)if(tx[i]){api.SetCongestionControl(tx[i],!fixture_fixed,!fixture_fixed);if(fixture_fixed)api.SetTxRate(tx[i],20e6);}
@@ -336,12 +347,12 @@ struct Endpoint::Impl {
     const auto loss=requested_loss.load(std::memory_order_acquire);if(loss!=options.fixture_loss_percent){options.fixture_loss_percent=loss;for(auto r:rx)if(r)api.SetRxLoss(r,loss);for(auto t:tx)if(t)api.SetTxLoss(t,loss);if(command_tx)api.SetTxLoss(command_tx,loss);}
     if(!options.host.empty()&&tx[0]==nullptr&&now>=resolve_at){peer_host=resolve(options.host,stop);if(!peer_host.empty())sender(peer_host,options.destination_port);resolve_at=now+std::int64_t(view.local_frequency);}
     events();
-    if(recreate_native)break;
+    if(recreate_native){end_reason=Retirement::peer_replaced;break;}
     // Receive processing records newer QPC observations. Expiry must use a
     // subsequently sampled time, never the loop-entry time preceding them.
     now=native_qpc();
-    if(view.clock_valid&&!clocks.current(now))retire();
-    if(attached&&last_progress&&now-last_progress>=std::int64_t(view.local_frequency)){retire();last_hello=now-std::int64_t(view.local_frequency);}
+    if(view.clock_valid&&!clocks.current(now))retire(Retirement::clock_expired);
+    if(attached&&last_progress&&now-last_progress>=std::int64_t(view.local_frequency)){retire(Retirement::progress_expired);last_hello=now-std::int64_t(view.local_frequency);}
     if(tx[0]!=nullptr&&now-last_hello>=std::int64_t(view.local_frequency/4)){hello();last_hello=now;}
     if(attached&&now-last_clock>=std::int64_t(view.local_frequency/10)){const auto stamp=std::uint64_t(native_qpc());clock_requests[clock_cursor++%clock_requests.size()]=stamp;command(Kind::clock_request,{},stamp);last_clock=now;}
     // One coherent keepalive carries all service bindings. Separate periodic
@@ -356,7 +367,7 @@ struct Endpoint::Impl {
     // complete native instance after the same one-second progress deadline;
     // the outer worker waits one second before its next connection attempt.
     if(!view.connected&&tx[0]!=nullptr&&handshake_started&&now-handshake_started>=std::int64_t(view.local_frequency)){
-        view.error=ERROR_TIMEOUT;constexpr char reason[]="NORM handshake progress expired";std::copy(std::begin(reason),std::end(reason),view.failure.begin());break;
+        view.error=ERROR_TIMEOUT;constexpr char reason[]="NORM handshake progress expired";std::copy(std::begin(reason),std::end(reason),view.failure.begin());end_reason=Retirement::handshake_expired;break;
     }
     published_margin.store(view.clock_valid?static_cast<std::uint64_t>(std::ceil(view.clock_uncertainty_ms*.001*view.local_frequency)):UINT64_MAX,std::memory_order_release);
     if(view.connected)transmit(now);
@@ -367,14 +378,14 @@ struct Endpoint::Impl {
    }
    HANDLE waits[]={stop,wake,reinterpret_cast<HANDLE>(api.GetDescriptor(instance))};WaitForMultipleObjects(3,waits,FALSE,2);
   }
- }catch(const std::exception& e){std::lock_guard lock(mutex);view.error=GetLastError()?GetLastError():ERROR_INVALID_DATA;view.failure={};std::copy_n(e.what(),(std::min)(std::strlen(e.what()),view.failure.size()-1),view.failure.data());++view.native_errors;}
- catch(...){std::lock_guard lock(mutex);view.error=GetLastError()?GetLastError():ERROR_INVALID_DATA;++view.native_errors;}
- {std::lock_guard lock(mutex);retire();clear_native();view.running=view.connected=view.clock_valid=false;SetEvent(ready);}if(ws)WSACleanup();}
+ }catch(const std::exception& e){end_reason=Retirement::native_exception;std::lock_guard lock(mutex);view.error=GetLastError()?GetLastError():ERROR_INVALID_DATA;view.failure={};std::copy_n(e.what(),(std::min)(std::strlen(e.what()),view.failure.size()-1),view.failure.data());++view.native_errors;}
+ catch(...){end_reason=Retirement::native_exception;std::lock_guard lock(mutex);view.error=GetLastError()?GetLastError():ERROR_INVALID_DATA;++view.native_errors;}
+ {std::lock_guard lock(mutex);retire(end_reason);clear_native();view.running=view.connected=view.clock_valid=false;SetEvent(ready);}if(ws)WSACleanup();}
 };
 Endpoint::Endpoint():impl_(std::make_unique<Impl>()){}
 Endpoint::~Endpoint()=default;
-bool Endpoint::start(const Options& o){if(!impl_->stop||!impl_->wake||!impl_->ready||impl_->thread.joinable()||!o.receive_port||o.receive_port>65528||!o.destination_port||o.destination_port>65528||o.fixture_loss_percent<0||o.fixture_loss_percent>100)return false;impl_->options=o;impl_->requested_loss.store(o.fixture_loss_percent);impl_->self=identity();impl_->boot=nonce();impl_->view.local=impl_->self;impl_->view.local_frequency=native_frequency();ResetEvent(impl_->stop);impl_->thread=std::thread([p=impl_.get()]{do{p->run();}while(WaitForSingleObject(p->stop,1000)==WAIT_TIMEOUT);});return true;}
-void Endpoint::stop()noexcept{SetEvent(impl_->stop);SetEvent(impl_->wake);if(impl_->thread.joinable())impl_->thread.join();}
+bool Endpoint::start(const Options& o){if(!impl_->stop||!impl_->wake||!impl_->ready||!impl_->diagnostic_stop||impl_->thread.joinable()||!o.receive_port||o.receive_port>65528||!o.destination_port||o.destination_port>65528||o.fixture_loss_percent<0||o.fixture_loss_percent>100)return false;impl_->options=o;impl_->requested_loss.store(o.fixture_loss_percent);impl_->self=identity();impl_->boot=nonce();impl_->diagnostics.configure(o.diagnostics,impl_->boot);impl_->view.local=impl_->self;impl_->view.local_frequency=native_frequency();ResetEvent(impl_->stop);ResetEvent(impl_->diagnostic_stop);impl_->diagnostics.progress(impl_->diagnostic_progress());try{if(impl_->diagnostics.enabled())impl_->diagnostic_thread=std::thread([p=impl_.get()]{p->diagnostics.observe(p->diagnostic_stop);});impl_->thread=std::thread([p=impl_.get()]{do{p->run();}while(WaitForSingleObject(p->stop,1000)==WAIT_TIMEOUT);});}catch(...){impl_->join();return false;}return true;}
+void Endpoint::stop()noexcept{impl_->join();}
 bool Endpoint::send(Family family,std::span<const std::uint8_t> bytes,std::uint64_t expected_connection,std::uint64_t expected_service){if(family==Family::link||family>Family::actor||bytes.size()<16||bytes.size()>max_payload)return false;auto& s=*impl_;std::lock_guard lock(s.mutex);if(!s.view.connected||(expected_connection&&s.connection!=expected_connection))return false;const auto& service=s.services.at(family);if(!service.ready()||service.dirty||(expected_service&&service.generation!=expected_service))return false;bool ordered{};std::uint64_t key{};auto lane=classify(family,bytes,ordered,key);if(!key){++s.view.rejected;return false;}const auto domain=family==Family::observation&&bytes[6]>=12&&bytes[6]<=15?8u:unsigned(family);key|=std::uint64_t(domain)<<32;Pending* slot{};unsigned controls{};
  aircraft_sync::Sample appearance;status::Snapshot readiness;audio::State audio_state;int appearance_group=-1,initial_observation=-1;bool changed_readiness=false,changed_audio=false;
  std::array<std::uint64_t,4> observation_epoch{};bool changed_observation_epoch=false;
@@ -420,6 +431,9 @@ bool Endpoint::receive(Family family,Received& out,LinkContext* context,std::uin
 Endpoint::Binding Endpoint::open_service(Family family){if(family==Family::link||family>Family::actor)return {};auto& s=*impl_;std::lock_guard lock(s.mutex);if(!s.view.connected)return {};const auto generation=s.services.open(family);s.service_view();SetEvent(s.wake);return {s.connection,generation};}
 void Endpoint::close_service(Family family,Binding binding)noexcept{if(family==Family::link||family>Family::actor)return;auto& s=*impl_;std::lock_guard lock(s.mutex);if(binding.connection&&binding.connection==s.connection){s.services.close(family,binding.generation);s.service_view();SetEvent(s.wake);}}
 bool Endpoint::evidence(Received& out){auto& s=*impl_;std::lock_guard lock(s.mutex);if(!s.trace_size)return false;out=s.traces[s.trace_head];s.trace_head=(s.trace_head+1)%s.traces.size();--s.trace_size;return true;}
+bool Endpoint::diagnostic(psx::diagnostics::Event& event)noexcept{return impl_->diagnostics.pop(event);}
+std::uint64_t Endpoint::diagnostic_lost()const noexcept{return impl_->diagnostics.lost();}
+void Endpoint::fixture_native_call_delay(NativeCall call,std::uint32_t ms)noexcept{impl_->diagnostics.fixture_delay(call,ms);SetEvent(impl_->wake);}
 void Endpoint::fixture_loss(double percent)noexcept{if(!std::isfinite(percent)||percent<0||percent>100)return;impl_->requested_loss.store(percent,std::memory_order_release);SetEvent(impl_->wake);}
 void Endpoint::fixture_command_stall(bool on)noexcept{impl_->command_stall.store(on,std::memory_order_release);SetEvent(impl_->wake);}
 void Endpoint::fixture_state_stall(bool on)noexcept{impl_->state_stall.store(on,std::memory_order_release);SetEvent(impl_->wake);}

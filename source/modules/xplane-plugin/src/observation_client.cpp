@@ -444,13 +444,21 @@ struct ObservationClient::Impl {
                 status.exporter_sample_to_apply=motion_diagnostic.exporter_age.distribution();status.sampling_width=motion_diagnostic.sampling_width.distribution();
                 if(!bridge::encode(status,++sequence,output))break;
                 write_size=static_cast<DWORD>(output.size);last_motion=now;
-            } else if (!writing && handshake && journal && elapsed(now,last_events,config.status_ms)) {
-                const auto recent=journal->recent_since(recent_cursor); recent_cursor=recent.cursor; last_events=now;
-                if(recent.overwritten) event(d::Code::events_lost,d::Severity::warning,d::ErrorDomain::none,0,"bridge recent history overwritten");
-                bridge::DiagnosticBatch batch; batch.connection_id=producer.latest.session().connection_id;
-                batch.count=recent.count; batch.events=recent.events;
-                // Event loss/encoding cannot invalidate the transport or its source state.
-                if(batch.count && bridge::encode(batch,++sequence,output)) write_size=static_cast<DWORD>(output.size);
+            } else if (!writing && handshake && elapsed(now,last_events,config.status_ms)) {
+                // Transport notices get the existing diagnostic slot first after reconnect.
+                // Keep one batch per status period: draining a burst faster than this
+                // would replace its own pending kind5 state in the native status lane.
+                last_events=now;
+                bridge::DiagnosticBatch batch;batch.connection_id=producer.latest.session().connection_id;
+                if(auto* transport=psx::sync::enabled()?psx::sync::runtime():nullptr)
+                    while(batch.count<batch.events.size()&&transport->diagnostic(batch.events[batch.count]))++batch.count;
+                if(!batch.count&&journal){
+                    const auto recent=journal->recent_since(recent_cursor);recent_cursor=recent.cursor;
+                    if(recent.overwritten)event(d::Code::events_lost,d::Severity::warning,d::ErrorDomain::none,0,"bridge recent history overwritten");
+                    batch.count=recent.count;batch.events=recent.events;
+                }
+                // Evidence failure never changes transport/source readiness.
+                if(batch.count&&bridge::encode(batch,++sequence,output))write_size=static_cast<DWORD>(output.size);
             }
             if (!writing && write_size) {
                 ResetEvent(write.hEvent); DWORD sent{};
