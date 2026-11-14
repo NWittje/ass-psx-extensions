@@ -56,7 +56,7 @@ function New-IosPackageGuard($Authority,[string]$OuterContext,[string]$OuterWork
   & $assertion $Authority $OuterContext $OuterWork $Helper $commonPath $commonHash $Phase $Source $Destination
  }.GetNewClosure()
 }
-function Assert-IosExistingPackage($State,[string]$Destination,$Manifest,[string[]]$Mutable,[string]$Configuration){
+function Assert-IosExistingPackage($State,[string]$Destination,$Manifest,[string[]]$Mutable,[string]$Configuration,[object[]]$SharedRuntimeSuccessor=@()){
  if(-not$State.Exists){return}
  if(-not$Manifest){if(@($State.Files).Count-or@($State.Directories).Count){throw 'Existing IOS package has no qualified manifest.'};return}
  if($Manifest.schema-cne'psx-ios-package-v1'-or$Manifest.configuration-cne$Configuration-or-not@($Manifest.payload).Count){throw 'Existing IOS package manifest identity is invalid.'}
@@ -82,7 +82,14 @@ function Assert-IosExistingPackage($State,[string]$Destination,$Manifest,[string
    $name=[IO.Path]::GetFileName([string]$row.path)
    if($name-notin@('ass_graphics_lib.dll','ass_graphics_lib.pdb')-or$seenShared.ContainsKey($name)-or[IO.Path]::GetFullPath([string]$row.path)-ine(Join-Path $parent $name)){throw 'Invalid shared IOS runtime member.'}
    $seenShared[$name]=$true
-   if(-not[IO.File]::Exists($row.path)-or(Get-Item -LiteralPath $row.path).Length-ne$row.bytes-or(Get-FileHash -LiteralPath $row.path).Hash-ine$row.sha256){throw 'Shared IOS runtime changed.'}
+   if(-not[IO.File]::Exists($row.path)){throw 'Shared IOS runtime unavailable.'}
+   $actual=Get-Item -LiteralPath $row.path;$hash=(Get-FileHash -LiteralPath $row.path).Hash
+   if($actual.Length-ne$row.bytes-or$hash-ine$row.sha256){
+    # A separately installed shared upgrade can precede this product refresh.
+    # Admit only the exact successor selected by the qualified native graph.
+    $next=@($SharedRuntimeSuccessor|Where-Object{[IO.Path]::GetFullPath([string]$_.path)-ieq[IO.Path]::GetFullPath([string]$row.path)})
+    if($SharedRuntimeSuccessor.Count-ne2-or$next.Count-ne1-or$actual.Length-ne$next[0].bytes-or$hash-ine$next[0].sha256){throw 'Shared IOS runtime differs from both predecessor and qualified successor.'}
+   }
   }
  }
  foreach($entry in $State.Files){if(-not$known.ContainsKey($entry.Path)){throw "Unrecognized IOS package file retained: $($entry.Path)"}}

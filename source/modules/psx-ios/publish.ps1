@@ -4,6 +4,7 @@ param([Parameter(Mandatory=$true)][ValidateSet('Debug','Release')][string]$Confi
       [string]$NativeStagingReason='',
       [string]$CommitWorkDirectory='',
       [switch]$RefreshInternalDebug,
+      [switch]$AdjacentGraphicsForMigration,
       [string]$AssGraphicsSdkRoot=$env:ASS_GRAPHICS_SDK_ROOT,
       [string]$GraphicsSourceRoot='',
       [string]$XplMonitorClientRoot='P:\development\xpl-monitor\sdk\client\1.0.0',
@@ -27,8 +28,10 @@ $monitorSdk=Get-IosMonitorSdk $XplMonitorClientRoot
 $monitorCache=[regex]::Match([IO.File]::ReadAllText((Join-Path $BuildDirectory 'CMakeCache.txt')),'(?m)^XPL_MONITOR_CLIENT_ROOT:PATH=([^\r\n]+)')
 if(-not $monitorCache.Success-or[IO.Path]::GetFullPath($monitorCache.Groups[1].Value).TrimEnd('\','/')-ine$monitorSdk.Root){throw 'Monitor SDK differs from native build input.'}
 $graphicsSource=Resolve-IosGraphicsSdk $(if($GraphicsSourceRoot){$GraphicsSourceRoot}else{$graphicsSdk.Root})
-$nativeSdkFiles=@(Get-ChildItem -LiteralPath $graphicsSdk.Root -File -Recurse -Force)
-$sourceSdkFiles=@(Get-ChildItem -LiteralPath $graphicsSource.Root -File -Recurse -Force)
+# The durable consumer SDK omits producer examples and qualification output.
+# Compare the actual headers/imports/runtime/symbol/legal inputs used here.
+$nativeSdkFiles=@($graphicsSdk.Files|ForEach-Object{Get-Item -LiteralPath $_})
+$sourceSdkFiles=@($graphicsSource.Files|ForEach-Object{Get-Item -LiteralPath $_})
 if($nativeSdkFiles.Count-ne$sourceSdkFiles.Count){throw 'Graphics source location successor file set differs.'}
 $graphicsSuccessor=@()
 foreach($native in $nativeSdkFiles){
@@ -54,7 +57,6 @@ $commitWork=$null
 $commitLease=$null
 $mutable=@('settings.cfg','settings.cfg.bak','clients.cfg','clients.cfg.bak','customer.png','customer.png.bak','fmc-quicksave.psxfmc','fmc-quicksave.psxfmc.bak')
 $teracopy='C:\Program Files\TeraCopy\TeraCopy.exe'
-if($NativeStagingReason){throw 'Native staging override is superseded; agent-managed transfers require TeraCopy.'}
 $borrowedCleanupParent=$null
 if($env:PSX_WORK_CLEANUP_PARENT){
     # A live enclosing build owns this staging. Invalid context never falls back
@@ -138,8 +140,14 @@ function StageFiles([object[]]$entries,[string]$TargetStage=$stage,[switch]$Prep
     $record=[ordered]@{sources=$sources;destination=$incoming;collision='SkipAll';verified=0;skipped=0;errors=0;transport='TeraCopy';tera_count=$sources.Count;native_count=0;receipt=$null}
     $transfers.Add($record)
     try{
-        $receipt=Invoke-IosTeraCopy -Sources ([string[]]$sources.path) -Destination $incoming -EvidenceDirectory (Join-Path $batch 'evidence')
-        $record.receipt=$receipt;$record.skipped=$receipt.job.skipped
+        if($NativeStagingReason){
+            $nativeRecords=@($sources|ForEach-Object{@{Source=$_.path;Target=(Join-Path $incoming ([IO.Path]::GetFileName($_.path)));Bytes=$_.bytes;SHA256=$_.sha256}})
+            SyncNativeVerifiedTransfer $nativeRecords (Join-Path $batch 'evidence') $NativeStagingReason
+            $record.transport='ExplicitNativeVerified';$record.tera_count=0;$record.native_count=$sources.Count
+        }else{
+            $receipt=Invoke-IosTeraCopy -Sources ([string[]]$sources.path) -Destination $incoming -EvidenceDirectory (Join-Path $batch 'evidence')
+            $record.receipt=$receipt;$record.skipped=$receipt.job.skipped
+        }
         for($k=0;$k-lt$sources.Count;++$k){
             if(-not(EqualIdentity $sources[$k] (Identity $sources[$k].path))){throw 'Producer source changed during transfer'}
             $target=Join-Path $TargetStage $entries[$k].relative
@@ -169,7 +177,11 @@ try{
             $returnReceiptIdentity=Identity $returnReceiptPath
         }
     }
-    Assert-IosExistingPackage $originalTarget $destination $old $mutable $Configuration
+    $sharedParent=Split-Path -Parent $destination
+    $runtimeSuccessor=@(
+        @{path=(Join-Path $sharedParent 'ass_graphics_lib.dll');bytes=(Get-Item -LiteralPath (Join-Path $graphicsSdk.Root "$Configuration/bin/ass_graphics_lib.dll")).Length;sha256=(Get-FileHash -LiteralPath (Join-Path $graphicsSdk.Root "$Configuration/bin/ass_graphics_lib.dll")).Hash},
+        @{path=(Join-Path $sharedParent 'ass_graphics_lib.pdb');bytes=(Get-Item -LiteralPath (Join-Path $graphicsSdk.Root "$Configuration/symbols/ass_graphics_lib.pdb")).Length;sha256=(Get-FileHash -LiteralPath (Join-Path $graphicsSdk.Root "$Configuration/symbols/ass_graphics_lib.pdb")).Hash})
+    Assert-IosExistingPackage $originalTarget $destination $old $mutable $Configuration $runtimeSuccessor
     # Symbols are admitted only for the exact graphics DLL used by this build.
     # Keep the complete matching native SDK edition, including its own symbols.
     $producerDll=Identity (Join-Path $BuildDirectory "$Configuration/ass_graphics_lib.dll")
@@ -187,11 +199,17 @@ try{
     # The configuration parent owns one graphics pair shared by all consumers.
     $sharedFiles=@()
     foreach($binding in @(@{name='ass_graphics_lib.dll';identity=$producerDll},@{name='ass_graphics_lib.pdb';identity=(Identity $symbolPath)})){
+        if($AdjacentGraphicsForMigration){
+            # Explicit collection-migration bridge: leave other consumers' shared
+            # parent unchanged until they qualify against the new edition.
+            StageFiles @(@{source=$binding.identity.path;relative=$binding.name})
+            continue
+        }
         $installed=Join-Path (Split-Path -Parent $destination) $binding.name
         if(-not [IO.File]::Exists($installed)-or-not (EqualIdentity $binding.identity (Identity $installed))){throw "Install the matching shared graphics dependency before publication: $installed"}
         $sharedFiles+=Identity $installed
     }
-    $sharedRuntime=[ordered]@{directory=(Split-Path -Parent $destination);configuration=$Configuration;version='1.4.5 ABI1';files=$sharedFiles}
+    $sharedRuntime=[ordered]@{directory=(Split-Path -Parent $destination);configuration=$Configuration;version=($graphicsSdk.Version+' ABI1');files=$sharedFiles}
     StageFiles @(@{source=Join-Path $PSScriptRoot 'vendor/civetweb/LICENSE.md';relative='licenses/CivetWeb-LICENSE.md'},
                  @{source=Join-Path $graphicsSource.Root "$Configuration/licenses/B612-OFL.txt";relative='licenses/B612-OFL.txt'},
                  @{source=Join-Path $graphicsSource.Root "$Configuration/licenses/NOTICE.txt";relative='licenses/NOTICE.txt'})
@@ -229,9 +247,10 @@ try{
             }
         }
     }
-    $transport=[ordered]@{policy='TeraCopy for agent-managed transfers; native atomic staging/commit/rollback only';tool=(Identity $teracopy);vendor_counts='Read-only completed job database, exact source roster and destination hashes';remote_cloud_completion='Not established by local verification'}
+    $transport=[ordered]@{policy=$(if($NativeStagingReason){'Explicit verified native staging: '+$NativeStagingReason}else{'TeraCopy for agent-managed transfers; native atomic staging/commit/rollback only'});tool=$(if($NativeStagingReason){$null}else{Identity $teracopy});vendor_counts=$(if($NativeStagingReason){'Source/destination sizes and SHA-256 before and after transfer'}else{'Read-only completed job database, exact source roster and destination hashes'});remote_cloud_completion='Not established by local verification'}
     $manifest=[ordered]@{schema='psx-ios-package-v1';version=$version;configuration=$Configuration;published_utc=[DateTime]::UtcNow.ToString('o');payload=$payload;sources=$sources;mutable_preserved=$before;retired_package_files=$obsolete;predecessor_manifest=$predecessorManifest;relocated_predecessor_payloads=$relocatedPredecessorCount;returned_predecessor=$(if($returnedPredecessor){@{origin=$returnedPredecessor.origin;manifest_sha256=$returnedPredecessor.manifest_sha256;verified=$returnedPredecessor.verified;receipt=$returnReceiptIdentity}}else{$null});ass_version=($graphicsSdk.Version+' ABI1');ass_symbols=$assSymbols;civetweb='Moog source snapshot; header 1.17; local Transfer-Encoding/Content-Length patch retained';scope='IOS only; shared public reposition sender with destination-terrain preflight; no service installation';transfer_tool=$transport;transfers=$transfers}
-    $manifest['shared_runtime']=$sharedRuntime
+    if(-not$AdjacentGraphicsForMigration){$manifest['shared_runtime']=$sharedRuntime}
+    $manifest['graphics_layout']=$(if($AdjacentGraphicsForMigration){'explicit-adjacent-collection-migration'}else{'shared-parent'})
     $manifest['monitor_sdk']=@{version=$monitorSdk.Version;api=1;role='collector';root=$monitorSdk.Root;manifest_sha256=$monitorSdk.ManifestSHA256}
     $manifest['distribution']=if($Configuration -eq 'Debug'){'Internal Debug; not a release asset'}else{'Release'}
     WriteText (Join-Path $stage 'manifest.json') ($manifest|ConvertTo-Json -Depth 10)

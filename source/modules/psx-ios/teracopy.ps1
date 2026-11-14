@@ -10,6 +10,10 @@ function Invoke-IosTeraCopy {
  $reader=Join-Path $PSScriptRoot 'teracopy-job.py'
  foreach($path in @($tool,$reader,$Python)){if(-not[IO.File]::Exists($path)){throw "Required transfer tool unavailable; no fallback: $path"}}
  foreach($path in (@($Sources)+@($Destination,$EvidenceDirectory))){if(-not[IO.Path]::IsPathFullyQualified($path)){throw 'TeraCopy paths must be absolute.'}}
+ # Command-line staging and receipt matching use the same native Windows paths.
+ $Sources=@($Sources|ForEach-Object{[IO.Path]::GetFullPath($_)})
+ $Destination=[IO.Path]::GetFullPath($Destination)
+ $EvidenceDirectory=[IO.Path]::GetFullPath($EvidenceDirectory)
  if(-not$Sources.Count){throw 'Empty TeraCopy batch.'}
  $pins=@($Sources|ForEach-Object{
   $file=Get-Item -LiteralPath $_ -Force
