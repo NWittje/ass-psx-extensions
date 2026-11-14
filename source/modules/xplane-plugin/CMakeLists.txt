@@ -243,6 +243,9 @@ if(PSX_XPLANE_BUILD_TESTS)
   target_link_libraries(psx_status_tests PRIVATE psx_observation_client)
   add_test(NAME psx_status_offline COMMAND psx_status_tests)
   set_tests_properties(psx_status_offline PROPERTIES TIMEOUT 45)
+  get_property(psx_plugin_test_names DIRECTORY PROPERTY TESTS)
+  set_tests_properties(${psx_plugin_test_names} PROPERTIES
+    ENVIRONMENT "PSX_PLUGIN_TEST_INSTALL_ROOT=${PSX_XPLANE_TEST_INSTALL_ROOT}")
 endif()
 
 psx_stamp_directory("${CMAKE_CURRENT_SOURCE_DIR}" "${PROJECT_VERSION}")
