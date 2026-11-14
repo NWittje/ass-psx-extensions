@@ -113,15 +113,19 @@ OPERATIONAL_OMISSIONS = {
 }
 
 
-def make_plan(binary_root, sdk, source, work, profile="all"):
+def make_plan(binary_root, sdk, source, work, profile="all", sdk_manifest_path=None, sdk_manifest_sha256=None):
     if profile not in ("all", "operational"):
         raise ValueError("Unknown release preparation profile")
     if not binary_root.is_dir() or not sdk.is_dir() or work.exists():
         raise ValueError("Existing Release/SDK inputs and a fresh payload directory are required")
+    manifest_path = sdk_manifest_path or sdk / "producer-file-manifest.json"
+    if (sdk_manifest_path is None) != (sdk_manifest_sha256 is None):
+        raise ValueError("Explicit SDK manifest requires its qualified SHA256")
+    if sdk_manifest_sha256 is not None and sha(manifest_path) != sdk_manifest_sha256.upper():
+        raise ValueError("Qualified SDK input manifest differs")
+    sdk_manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
     work.mkdir(parents=True)
     symbols = symbol_functions(source)
-    manifest_path = sdk / "producer-file-manifest.json"
-    sdk_manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
     graphics = sdk / "Release/bin/ass_graphics_lib.dll"
     graphics_pdb = sdk / "Release/symbols/ass_graphics_lib.pdb"
     if symbols["pe_identity"](graphics) != symbols["pdb_identity"](graphics_pdb):
@@ -316,7 +320,8 @@ def make_plan(binary_root, sdk, source, work, profile="all"):
     if profile == "operational" and {g["product"] for g in groups} != OPERATIONAL_PRODUCTS | {"ass-graphics-lib"}:
         raise ValueError("Operational release is missing a current product")
     return dict(schema=1, configuration="Release", profile=profile, graphics=sdk_manifest["version"],
-                producerManifestSHA256=sha(manifest_path), groups=groups,
+                producerManifestSHA256=sdk_manifest.get("producerSDKManifestSHA256", sha(manifest_path)),
+                sdkInputManifestSHA256=sha(manifest_path), groups=groups,
                 limits="Static PE/PDB/data closure; NORM/fonts supplied separately; no simulator or physical acceptance.")
 
 
@@ -325,6 +330,8 @@ if __name__ == "__main__":
     for name in ("binary-root", "sdk", "source", "work", "output"):
         parser.add_argument("--" + name, required=True, type=Path)
     parser.add_argument("--profile", choices=("all", "operational"), default="all")
+    parser.add_argument("--sdk-manifest", type=Path)
+    parser.add_argument("--sdk-manifest-sha256")
     args = parser.parse_args()
-    result = make_plan(args.binary_root, args.sdk, args.source, args.work, args.profile)
+    result = make_plan(args.binary_root, args.sdk, args.source, args.work, args.profile, args.sdk_manifest, args.sdk_manifest_sha256)
     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")

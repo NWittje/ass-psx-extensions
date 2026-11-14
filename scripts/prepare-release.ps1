@@ -28,9 +28,9 @@ if($env:PSX_WORK_CLEANUP_PARENT){
 try{
  [IO.Directory]::CreateDirectory($WorkDirectory)|Out-Null
  . (Join-Path $SourceDirectory 'shared/graphics-sdk/current.ps1')
- $null=Get-PsxCurrentGraphicsSdk $GraphicsSdkRoot Release
+ $sdk=Get-PsxCurrentGraphicsSdk $GraphicsSdkRoot Release
  $plan=Join-Path $WorkDirectory 'payload-plan.json'
- & $Python -B "$PSScriptRoot/release_payload.py" --binary-root $BinaryRoot --sdk $GraphicsSdkRoot --source $SourceDirectory --work "$WorkDirectory/derived-inputs" --output $plan --profile $Profile.ToLowerInvariant()
+ & $Python -B "$PSScriptRoot/release_payload.py" --binary-root $BinaryRoot --sdk $GraphicsSdkRoot --sdk-manifest $sdk.vectorPath --sdk-manifest-sha256 $sdk.manifestSHA256 --source $SourceDirectory --work "$WorkDirectory/derived-inputs" --output $plan --profile $Profile.ToLowerInvariant()
  if($LASTEXITCODE){throw 'Configuration-free Release payload qualification failed.'}
  $selection=Get-Content -LiteralPath $plan -Raw|ConvertFrom-Json
  if($selection.configuration-cne'Release'){throw 'Only Release downloads are supported.'}
@@ -78,7 +78,7 @@ try{
   }finally{$zip.Dispose()}
   $archives.Add([pscustomobject]@{product=$group.product;version=$version;path=$archive;bytes=(Get-Item $archive).Length;sha256=(SyncHash $archive);members=@($group.files).Count+1})
  }
- [ordered]@{schema=1;configuration='Release';profile=$selection.profile;graphics=$selection.graphics;producerManifestSHA256=$selection.producerManifestSHA256;payloadPlanSHA256=(SyncHash $plan);archives=$archives.ToArray();limits=$selection.limits}|ConvertTo-Json -Depth 6|Set-Content "$WorkDirectory/release-preparation.json" -Encoding utf8
+ [ordered]@{schema=1;configuration='Release';profile=$selection.profile;graphics=$selection.graphics;producerManifestSHA256=$selection.producerManifestSHA256;sdkInputManifestSHA256=$selection.sdkInputManifestSHA256;payloadPlanSHA256=(SyncHash $plan);archives=$archives.ToArray();limits=$selection.limits}|ConvertTo-Json -Depth 6|Set-Content "$WorkDirectory/release-preparation.json" -Encoding utf8
  $complete=$true
  Write-Output "Prepared and verified $($archives.Count) lean Release archives in $output. Canonical operator installations are unchanged."
 }finally{

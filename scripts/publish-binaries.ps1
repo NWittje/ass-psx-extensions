@@ -18,21 +18,23 @@ param(
 $ErrorActionPreference = 'Stop'
 function Assert-PublicationEdition([string]$Module,[string]$Configuration,[bool]$Canonical,[bool]$ExistingCopy,
     [bool]$InternalDebugRefresh,[bool]$HwioSharedCopy,[bool]$SharedGraphicsRuntime) {
-    # Retained internal HWIO copies are refreshed only by an explicit caller;
-    # this exception never creates a Debug delivery or another product's copy.
-    if($InternalDebugRefresh-and-not($Module-ceq'HWIO'-and$Configuration-ceq'Debug'-and$Canonical-and$ExistingCopy)){
-        throw 'Internal Debug refresh requires the existing canonical HWIO Debug copy.'
+    # Retained internal copies are refreshed only by an explicit caller;
+    # this exception does not create a public Debug download or a second copy.
+    if($InternalDebugRefresh-and-not($Module-in@('Plugin','Coordinator','Exporter','HWIO','Reposition','Watchdog')-and$Configuration-ceq'Debug'-and$Canonical-and$ExistingCopy)){
+        throw 'Internal Debug refresh requires an existing canonical copy of the selected product.'
     }
     if($HwioSharedCopy-and-not($Module-ceq'HWIO'-and$Configuration-ceq'Release'-and$Canonical-and$ExistingCopy)){
         throw 'Shared HWIO refresh requires its existing canonical Release copy.'
     }
-    if($SharedGraphicsRuntime-and$Module-cne'HWIO'){throw 'This shared-runtime selection belongs to HWIO only.'}
+    if($SharedGraphicsRuntime-and$Module-notin@('HWIO','Coordinator','Reposition')){throw 'Shared graphics requires a graphics-dependent product.'}
     if($Configuration-cne'Release'-and$Canonical-and-not$InternalDebugRefresh){
         throw 'Project publication is Release-only; Debug remains internal qualification output.'
     }
 }
 $canonicalBin=-not$BinDirectory-or[IO.Path]::GetFullPath($BinDirectory).TrimEnd('\','/')-ieq'P:\development\psx_ios\bin'
-$existingCopy=if($InternalDebugRefresh){Test-Path -LiteralPath 'P:\development\psx_ios\bin\Debug\psx-hwio\psx-hwio.exe' -PathType Leaf}elseif($HwioSharedCopy){Test-Path -LiteralPath 'P:\development\psx_ios\bin\Release\psx-hwio-share\psx-hwio.exe' -PathType Leaf}else{$false}
+$product = if($Module -eq 'Plugin') {'X-Plane'} elseif($Module -eq 'Exporter') {'psx-exporter'} elseif($Module -eq 'HWIO') {'psx-hwio'} elseif($Module -eq 'Reposition') {'psx-reposition-test'} elseif($Module -eq 'Watchdog') {'psx-xpl-watchdog'} else {'psx-xp-coordinator'}
+$entryRelative=if($Module-eq'Plugin'){'Resources/plugins/psx_xplane/win_x64/psx_xplane.xpl'}elseif($Module-eq'Exporter'){'psx-exporter-start.exe'}else{$product+'.exe'}
+$existingCopy=if($InternalDebugRefresh){Test-Path -LiteralPath (Join-Path "P:\development\psx_ios\bin\Debug\$product" $entryRelative) -PathType Leaf}elseif($HwioSharedCopy){Test-Path -LiteralPath 'P:\development\psx_ios\bin\Release\psx-hwio-share\psx-hwio.exe' -PathType Leaf}else{$false}
 Assert-PublicationEdition $Module $Configuration $canonicalBin ([bool]$existingCopy) ([bool]$InternalDebugRefresh) ([bool]$HwioSharedCopy) ([bool]$SharedGraphicsRuntime)
 $projectRoot = 'P:\development\psx_ios'
 $buildRoot = (Resolve-Path -LiteralPath $BuildDirectory).Path
@@ -576,7 +578,6 @@ function RuntimeSource([string]$name) {
     throw "Required runtime $name not found in matching toolset $crtRoot"
 }
 $configRoot = Join-Path $binRoot $Configuration
-$product = if($Module -eq 'Plugin') {'X-Plane'} elseif($Module -eq 'Exporter') {'psx-exporter'} elseif($Module -eq 'HWIO') {'psx-hwio'} elseif($Module -eq 'Reposition') {'psx-reposition-test'} else {'psx-xp-coordinator'}
 $target = Join-Path $configRoot $(if($HwioSharedCopy){'psx-hwio-share'}else{$product})
 $stage = Join-Path $publicationWork 'stage'
 $backup = Join-Path $publicationWork 'previous'

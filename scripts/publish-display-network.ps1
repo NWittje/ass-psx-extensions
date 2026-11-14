@@ -131,13 +131,13 @@ try{
     # Bind the guide's dependency label to this qualified SDK; native inputs stay original.
     $guidePath=Join-Path $stage 'README.md'
     $guideText=[IO.File]::ReadAllText($guidePath)
-    $guideText=[regex]::Replace($guideText,'ASS Graphics\s*1\.4\.[0-9]+',('ASS Graphics '+$sdk.version))
+    $guideText=[regex]::Replace($guideText,'ASS Graphics\s*[0-9]+\.[0-9]+\.[0-9]+',('ASS Graphics '+$sdk.version))
     [IO.File]::WriteAllText($guidePath,$guideText,[Text.UTF8Encoding]::new($false))
     [void][IO.Directory]::CreateDirectory((Join-Path $stage 'corresponding-source'))
     New-CduShaderSourceArchive $entry.source (Join-Path $stage 'corresponding-source/shaders.zip')
    }
    Assert-DisplayFileDetails (Join-Path $stage "$name.exe") $version 'ASS PSX Addons'
-   Assert-DisplayFileDetails (Join-Path $stage 'ass_graphics_lib.dll') '1.4.5' 'ASS Graphics Lib'
+   Assert-DisplayFileDetails (Join-Path $stage 'ass_graphics_lib.dll') $sdk.version 'ASS Graphics Lib'
    $binary=Audit $stage
    $files=@(Get-PublicationInventory $stage|Where-Object{!(Mutable $_.Path)}|ForEach-Object{
     [ordered]@{path=$_.Path.Replace('\','/');size=$_.Bytes;sha256=$_.SHA256}
@@ -145,7 +145,7 @@ try{
    $proof=[ordered]@{stampPath=$stampPath;stampSHA256=(SyncHash $stampPath);clean=$true;
     tests=$(if($entry.product-eq'CduClient'){$stamp.testSummary}else{$stamp.tests});testLogSha256=$stamp.testLogSha256;
     sourceRoot=$entry.source;inputs=$stamp.inputs}
-   [ordered]@{schema=1;product=$name;version=$version;configuration=$entry.configuration;graphics='1.4.5';abi=1;
+   [ordered]@{schema=1;product=$name;version=$version;configuration=$entry.configuration;graphics=$sdk.version;abi=$sdk.abi;
     layout='runtime-v1';qualification=$proof;binaryEvidence=$binary;files=$files;
     graphicsOrigin=$sdk;mutableExcluded=@('settings.cfg','settings.cfg.bak','profiles/*.cfg','profiles/*.cfg.bak')
    }|ConvertTo-Json -Depth 14|Set-Content -LiteralPath (Join-Path $stage 'manifest.json') -Encoding utf8

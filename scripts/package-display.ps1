@@ -114,8 +114,8 @@ function Get-DisplayMaintainedInput([string]$Path,[string]$Snapshot,$HostSdk=$nu
 }
 function Get-DisplayGraphicsProfile([string]$Product,$Stamp) {
  if($Stamp.graphicsSdk){
-  if($Product-notin@('Host','Client')-or$Stamp.hostGraphics-or$Stamp.graphicsSdk.profile-cne'GraphicsCurrent'-or$Stamp.graphicsSdk.version-cne'1.4.5'-or$Stamp.graphicsSdk.abi-ne1){throw 'Unsupported graphics144 source profile'}
-  return 'Graphics144'
+  if($Product-notin@('Host','Client')-or$Stamp.hostGraphics-or$Stamp.graphicsSdk.profile-cne'GraphicsCurrent'-or$Stamp.graphicsSdk.version-cne(Get-PsxCurrentGraphicsEdition).version-or$Stamp.graphicsSdk.abi-ne1){throw 'Unsupported current graphics source profile'}
+  return 'GraphicsCurrent'
  }
 
  if($Product-eq'Client'){
@@ -180,7 +180,7 @@ function Get-DisplayPackagingNative([string]$Product,[string]$Configuration,[str
  if((SyncHash $exe)-ine$ExeHash-or(SyncHash $pdb)-ine$PdbHash){throw 'Native producer bytes differ from original owner binding'}
  $version=Get-DisplayProductVersion $Product $native
  if($version-ne(Get-DisplayProductVersion $Product (Join-Path $roots.Maintained 'source'))){throw 'Current source product version differs from native qualification'}
- $ass=if($profile-eq'GraphicsCurrent'){'1.4.5'}elseif($hostSdk){'1.4.1'}elseif($Product-eq'Host'){'1.2.2'}else{'1.3.0'}
+ $ass=if($profile-eq'GraphicsCurrent'){$hostSdk.version}elseif($hostSdk){'1.4.1'}elseif($Product-eq'Host'){'1.2.2'}else{'1.3.0'}
  $dll=Join-Path $Graphics 'bin\ass_graphics_lib.dll';$symbols=Join-Path $Graphics 'symbols\ass_graphics_lib.pdb';$licenses=Join-Path $Graphics 'licenses'
  if(Test-Path -LiteralPath (Join-Path $Graphics 'reconstruction.json')){
   if($Product-ne'Host'){throw 'ASS reconstruction is only qualified for Host'}
@@ -269,12 +269,12 @@ function Copy-DisplayPackagingPayload([object[]]$Payload,[string]$Stage,[string]
  foreach($item in $Payload){SyncIdentity (SyncChild $Stage $item.relative) (Get-Item -LiteralPath $item.source).Length (SyncHash $item.source)}
 }
 function Assert-DisplayPackagingSourceVectors($m,$Native) {
- $expectedSources=@(if($Native.GraphicsProfile-in@('Host141','Graphics144')){$Native.MaintainedInputs}else{$Native.Stamp.inputs})
+ $expectedSources=@(if($Native.GraphicsProfile-in@('Host141','GraphicsCurrent')){$Native.MaintainedInputs}else{$Native.Stamp.inputs})
  if(@($m.sourceHashes).Count-ne@($expectedSources).Count){throw 'Candidate source vector count differs'}
  for($i=0;$i-lt@($Native.Stamp.inputs).Count;++$i){
   if($m.sourceHashes[$i].path-ine$expectedSources[$i].path-or$m.sourceHashes[$i].bytes-ne$expectedSources[$i].bytes-or$m.sourceHashes[$i].sha256-ine$expectedSources[$i].sha256){throw 'Candidate maintained/original source correspondence differs'}
  }
- if($Native.GraphicsProfile-in@('Host141','Graphics144')){
+ if($Native.GraphicsProfile-in@('Host141','GraphicsCurrent')){
   if(@($m.originalNativeSourceHashes).Count-ne@($Native.Stamp.inputs).Count-or$m.graphicsOrigin.profile-cne$Native.GraphicsProfile-or$m.graphicsOrigin.manifestSHA256-ine$Native.HostSdk.manifestSHA256-or$m.graphicsOrigin.origin-ine$Native.HostSdk.origin){throw 'Candidate lost complete original native vector or qualified SDK origin/profile'}
   for($i=0;$i-lt@($Native.Stamp.inputs).Count;++$i){$old=$m.originalNativeSourceHashes[$i];$actual=$Native.Stamp.inputs[$i];if($old.path-ine$actual.path-or$old.bytes-ne$actual.bytes-or$old.sha256-ine$actual.sha256){throw 'Candidate original native vector differs'}}
  }
@@ -468,9 +468,9 @@ try{
   Copy-DisplayPackagingPayload $native.Payload $candidate $operation
   $files=@($native.Payload|ForEach-Object{[ordered]@{path=$_.relative;size=(Get-Item -LiteralPath $_.source).Length;sha256=(SyncHash $_.source);source=$_.source;purpose=$_.purpose}})
   $qualification=[ordered]@{clean=$true;tests=$native.Assessment;testLogSha256=$native.Stamp.testLogSha256;timingPolicy='warning_only';loadedAcceptance=$false}
-  $sources=if($native.GraphicsProfile-in@('Host141','Graphics144')){$native.MaintainedInputs}else{$native.Stamp.inputs}
+  $sources=if($native.GraphicsProfile-in@('Host141','GraphicsCurrent')){$native.MaintainedInputs}else{$native.Stamp.inputs}
   $packageManifest=[ordered]@{schema=1;product=$native.Product;version=$native.Version;configuration=$Configuration;graphics=$native.Graphics;abi=1;candidate=$true;layout='runtime-v1';qualification=$qualification;sourceHashes=$sources;nativeBinding=$record.nativeBinding;packagingTools=$script:displayTools;binaryEvidence=$binary;files=$files;mutableExcluded=@('settings.cfg','settings.cfg.bak')}
-  if($native.GraphicsProfile-in@('Host141','Graphics144')){$packageManifest.originalNativeSourceHashes=$native.Stamp.inputs;$packageManifest.graphicsOrigin=[ordered]@{profile=$native.GraphicsProfile;origin=$native.HostSdk.origin;manifestSHA256=$native.HostSdk.manifestSHA256}}
+  if($native.GraphicsProfile-in@('Host141','GraphicsCurrent')){$packageManifest.originalNativeSourceHashes=$native.Stamp.inputs;$packageManifest.graphicsOrigin=[ordered]@{profile=$native.GraphicsProfile;origin=$native.HostSdk.origin;manifestSHA256=$native.HostSdk.manifestSHA256}}
   $packageManifest|ConvertTo-Json -Depth 10|Set-Content -LiteralPath (Join-Path $candidate 'manifest.json') -Encoding utf8
   $null=Assert-DisplayPackagingCandidate $candidate $native $script:displayTools $Product
   & (Join-Path $script:displayRoots.Maintained 'scripts\verify-binaries.ps1') -Module ('DU'+$Product) -Configuration $Configuration -BinDirectory $CandidateRoot -VerifyInputs|Out-Host
