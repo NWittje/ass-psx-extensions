@@ -157,8 +157,8 @@ function Get-DuBuildInputs([string]$Product,[string]$Repository,[string]$Graphic
  if($Product-eq'Client'){
   $paths+=@('inputs.ps1','package.ps1','publish.ps1','transfer.ps1','runtime-payload.ps1'|ForEach-Object{"$Repository/modules/psx-du-host/tools/$_"})
  }
- # Declare the full shared144-member SDK and its vector, not a copied DLL.
- if((Get-Content -LiteralPath "$Graphics/lib/cmake/AssGraphics/AssGraphicsConfigVersion.cmake" -Raw)-match'PACKAGE_VERSION "1\.4\.5"'){
+ # Bind the complete producer roster, including paired symbols and its manifest.
+ if((Get-Content -LiteralPath "$Graphics/lib/cmake/AssGraphics/AssGraphicsConfigVersion.cmake" -Raw)-match'PACKAGE_VERSION "1\.8\.0"'){
   $sdkHelper="$Repository/modules/psx-du-host/tools/graphics144-inputs.ps1"
   . $sdkHelper
   $sdk=Get-DuGraphics144Sdk (Split-Path $Graphics -Parent) (Split-Path $Graphics -Leaf)
