@@ -1,14 +1,37 @@
 #include "hwio/input_override_panel.hpp"
 #include <algorithm>
 #include <cwctype>
+#include <cstring>
+#include <Richedit.h>
 #include <sstream>
 namespace hwio {
 namespace gfx=ass::graphics;
 namespace {
-std::wstring text(HWND hwnd){const int n=GetWindowTextLengthW(hwnd);std::wstring out(static_cast<std::size_t>(n)+1,L'\0');GetWindowTextW(hwnd,out.data(),n+1);out.resize(n);return out;}
 std::wstring lower(std::wstring s){for(auto& c:s)c=static_cast<wchar_t>(std::towlower(c));return s;}
 }
-InputOverridePanel::~InputOverridePanel(){if(owner_)RemoveWindowSubclass(owner_,host_proc,1);if(pane_.handle())RemoveWindowSubclass(static_cast<HWND>(pane_.hwnd()),host_proc,1);if(search_.handle())RemoveWindowSubclass(static_cast<HWND>(search_.hwnd()),edit_proc,1);if(popup_){RemoveWindowSubclass(popup_,popup_proc,1);DestroyWindow(popup_);}}
+InputOverridePanel::~InputOverridePanel(){if(owner_)RemoveWindowSubclass(owner_,host_proc,1);if(pane_.handle())RemoveWindowSubclass(static_cast<HWND>(pane_.hwnd()),host_proc,1);if(search_.handle())RemoveWindowSubclass(static_cast<HWND>(search_.hwnd()),edit_proc,1);if(popup_){RemoveWindowSubclass(popup_,popup_proc,1);DestroyWindow(popup_);}if(popup_font_)DeleteObject(popup_font_);}
+void InputOverridePanel::sync_popup_font(){
+    const auto edit=static_cast<HWND>(search_.hwnd());
+    CHARFORMAT2W format{};format.cbSize=sizeof(format);
+    SendMessageW(edit,EM_GETCHARFORMAT,0,reinterpret_cast<LPARAM>(&format));
+    if((format.dwMask&(CFM_FACE|CFM_SIZE))!=(CFM_FACE|CFM_SIZE) || format.yHeight<=0)
+        throw std::runtime_error("Cannot read input-override text font");
+    LOGFONTW font{};
+    // Rich Edit owns character formatting, not a transferable HFONT. Convert
+    // twips to this window's pixels and retain our listbox font until replaced.
+    font.lfHeight=-MulDiv(format.yHeight,int(GetDpiForWindow(edit)),1440);
+    font.lfWeight=(format.dwMask&CFM_WEIGHT)?format.wWeight:((format.dwEffects&CFE_BOLD)?FW_BOLD:FW_NORMAL);
+    font.lfItalic=(format.dwEffects&CFE_ITALIC)!=0;
+    font.lfCharSet=format.bCharSet;font.lfPitchAndFamily=format.bPitchAndFamily;
+    font.lfQuality=CLEARTYPE_QUALITY;
+    wcscpy_s(font.lfFaceName,format.szFaceName);
+    if(popup_font_ && std::memcmp(&font,&popup_font_description_,sizeof(font))==0)return;
+    const auto next=CreateFontIndirectW(&font);
+    if(!next)throw std::runtime_error("Cannot create input-override dropdown font");
+    SendMessageW(popup_,WM_SETFONT,reinterpret_cast<WPARAM>(next),TRUE);
+    if(popup_font_)DeleteObject(popup_font_);
+    popup_font_=next;popup_font_description_=font;
+}
 void __cdecl InputOverridePanel::event(void* user,std::uint32_t id,std::uint32_t kind,double)noexcept{
     auto& p=*static_cast<InputOverridePanel*>(user);try{if(p.binding_)return;if(kind==AG_TEXT_CHANGED && id==3){p.selected_.clear();p.filter();}else if(kind==AG_CLICK)p.action(id);}catch(const std::exception& e){p.status_.text(wide(e.what()).c_str());}
 }
@@ -23,7 +46,7 @@ void InputOverridePanel::attach(gfx::Context& c,Runtime& runtime,void* parent){
     owner_=GetAncestor(edit,GA_ROOT);
     popup_=CreateWindowExW(WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE,L"LISTBOX",L"",WS_POPUP|WS_BORDER|WS_VSCROLL|LBS_NOINTEGRALHEIGHT,0,0,1,1,owner_,nullptr,GetModuleHandleW(nullptr),nullptr);
     if(!popup_)throw std::runtime_error("Cannot create input override search dropdown");
-    SendMessageW(popup_,WM_SETFONT,SendMessageW(edit,WM_GETFONT,0,0),FALSE);SetWindowSubclass(popup_,popup_proc,1,reinterpret_cast<DWORD_PTR>(this));SetWindowSubclass(owner_,host_proc,1,reinterpret_cast<DWORD_PTR>(this));SetWindowSubclass(static_cast<HWND>(pane_.hwnd()),host_proc,1,reinterpret_cast<DWORD_PTR>(this));arrange(width_,height_,false);
+    sync_popup_font();SetWindowSubclass(popup_,popup_proc,1,reinterpret_cast<DWORD_PTR>(this));SetWindowSubclass(owner_,host_proc,1,reinterpret_cast<DWORD_PTR>(this));SetWindowSubclass(static_cast<HWND>(pane_.hwnd()),host_proc,1,reinterpret_cast<DWORD_PTR>(this));arrange(width_,height_,false);
 }
 bool InputOverridePanel::position_popup(){
     if(!popup_)return false;
@@ -39,7 +62,7 @@ bool InputOverridePanel::position_popup(){
     const RECT next{anchor.left,anchor.bottom+gap,anchor.right,anchor.bottom+gap+height};
     GetWindowRect(popup_,&previous);
     if(!EqualRect(&previous,&next) && !SetWindowPos(popup_,HWND_TOP,next.left,next.top,next.right-next.left,next.bottom-next.top,SWP_NOACTIVATE|SWP_NOOWNERZORDER))return false;
-    const auto font=SendMessageW(edit,WM_GETFONT,0,0);if(SendMessageW(popup_,WM_GETFONT,0,0)!=font)SendMessageW(popup_,WM_SETFONT,font,TRUE);return true;
+    sync_popup_font();return true;
 }
 void InputOverridePanel::arrange(int width,int height,bool visible){
     width_=std::max(320,width);height_=std::max(240,height);visible_=visible;
@@ -52,7 +75,7 @@ void InputOverridePanel::arrange(int width,int height,bool visible){
 void InputOverridePanel::hide(){visible_=false;if(popup_)ShowWindow(popup_,SW_HIDE);if(runtime_ && runtime_->input_overrides().capturing)runtime_->capture_input_override(false);}
 void InputOverridePanel::filter(){
     struct RedrawGuard{HWND hwnd;bool complete{};~RedrawGuard(){if(!complete){SendMessageW(hwnd,WM_SETREDRAW,TRUE,0);ShowWindow(hwnd,SW_HIDE);}RedrawWindow(hwnd,nullptr,nullptr,RDW_ERASE|RDW_FRAME|RDW_INVALIDATE);}} redraw{popup_};
-    const auto query=lower(text(static_cast<HWND>(search_.hwnd())));matches_.clear();SendMessageW(popup_,WM_SETREDRAW,FALSE,0);SendMessageW(popup_,LB_RESETCONTENT,0,0);
+    const auto query=lower(search_.text());matches_.clear();SendMessageW(popup_,WM_SETREDRAW,FALSE,0);SendMessageW(popup_,LB_RESETCONTENT,0,0);
     std::wistringstream input(query);std::vector<std::wstring> tokens;for(std::wstring word;input>>word;)tokens.push_back(std::move(word));
     for(std::size_t n=0;n<controls_.size();++n){const auto& c=controls_[n];std::wstring label=wide(c.name+" / ATA "+std::to_string(c.chapter)+(c.encoder?" / Encoder":" / Button")+(c.assigned?" / assigned":" / unassigned"));
         std::wstring keywords=lower(label);for(const auto& id:c.actions)if(const auto* a=active_catalogue().action(id))keywords+=L" "+lower(wide(a->name+" "+a->position));

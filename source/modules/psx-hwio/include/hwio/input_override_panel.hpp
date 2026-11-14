@@ -9,6 +9,8 @@ class InputOverridePanel {
     Runtime* runtime_{};
     ass::graphics::Control pane_,clear_,capture_,search_,add_,status_,list_;
     HWND popup_{},owner_{};
+    HFONT popup_font_{};
+    LOGFONTW popup_font_description_{};
     std::vector<InputOverrideControl> controls_;
     std::pair<std::size_t,std::size_t> catalogue_shape_{};
     std::vector<std::size_t> matches_;
@@ -23,6 +25,7 @@ class InputOverridePanel {
     static LRESULT CALLBACK popup_proc(HWND,UINT,WPARAM,LPARAM,UINT_PTR,DWORD_PTR);
     static LRESULT CALLBACK host_proc(HWND,UINT,WPARAM,LPARAM,UINT_PTR,DWORD_PTR);
     bool position_popup();
+    void sync_popup_font();
     void filter();
     void select();
     void action(unsigned);

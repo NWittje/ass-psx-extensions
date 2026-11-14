@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(psx_hwio VERSION 1.0.1 LANGUAGES CXX RC)
+project(psx_hwio VERSION 1.0.2 LANGUAGES CXX RC)
 
 get_filename_component(PSX_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
 
@@ -48,13 +48,7 @@ if(NOT TARGET psx_diagnostics)
 
 endif()
 
-set(ASS_GRAPHICS_SDK_ROOT "P:/development/ass_graphics_lib/sdk/internal/1.4.5" CACHE PATH "Qualified ASS Graphics 1.4.5 matched Debug/Release SDK inputs")
-
-find_package(AssGraphics 1.4.5 EXACT CONFIG REQUIRED PATHS "${ASS_GRAPHICS_SDK_ROOT}/Release/lib/cmake/AssGraphics" NO_DEFAULT_PATH)
-
-set_property(TARGET ass::graphics APPEND PROPERTY IMPORTED_CONFIGURATIONS DEBUG)
-
-set_target_properties(ass::graphics PROPERTIES IMPORTED_LOCATION_DEBUG "${ASS_GRAPHICS_SDK_ROOT}/Debug/bin/ass_graphics_lib.dll" IMPORTED_IMPLIB_DEBUG "${ASS_GRAPHICS_SDK_ROOT}/Debug/lib/ass_graphics_lib.lib")
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/GraphicsSdk.cmake")
 
 if(NOT TARGET psx_network_io)
 
